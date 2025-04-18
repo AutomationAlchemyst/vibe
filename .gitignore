@@ -1,0 +1,4 @@
+credentials2.json
+creds.env
+*.log
+__pycache__/
