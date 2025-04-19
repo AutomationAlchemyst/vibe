@@ -47,10 +47,6 @@ jobs:
             print(f"Error writing credentials2.json using Python: {e}", file=sys.stderr)
             sys.exit(1)
       # --- End of new step ---
-
-      # Ensure the next step (Run python webcrawl/web_crawl.py) is correctly indented below
-      - name: Run the web crawl script
-        # ... rest of this step ...
       
       - name: Run the web crawl script
         run: python webcrawl/web_crawl.py
