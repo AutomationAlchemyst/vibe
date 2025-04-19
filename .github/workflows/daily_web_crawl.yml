@@ -23,19 +23,34 @@ jobs:
           python -m pip install --upgrade pip
           pip install feedparser openai python-dotenv gspread google-auth newspaper3k lxml_html_clean
 
-      - name: Create Google Credentials file
-        # Create the credentials file needed by gspread from the GitHub Secret
-        # Ensure the GOOGLE_CREDENTIALS secret contains the JSON content.
-        run: echo "${{ secrets.GOOGLE_CREDENTIALS }}" > credentials2.json
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      # --- REMOVE the old step that used 'echo' ---
 
-      - name: View Credentials File Content (DEBUG)
+      # --- ADD THIS NEW STEP using Python ---
+      - name: Create Google Credentials file (using Python)
+        env:
+          GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDENTIALS }}
+        shell: python
         run: |
-          echo "--- Start credentials2.json content (DEBUG) ---"
-          cat credentials2.json || echo "credentials2.json not found or cat failed"
-          echo "--- End credentials2.json content (DEBUG) ---"
-      # --- END OF ADDED DEBUG STEP ---
+          import os
+          import sys
+          creds_json = os.environ.get('GOOGLE_CREDS_JSON')
+          if not creds_json:
+            print("Error: GOOGLE_CREDENTIALS secret not found.", file=sys.stderr)
+            sys.exit(1)
+          try:
+            # Ensure the directory exists if needed (it should in this case)
+            # os.makedirs(os.path.dirname("credentials2.json"), exist_ok=True)
+            with open("credentials2.json", "w", encoding="utf-8") as f:
+              f.write(creds_json)
+            print("Successfully wrote credentials2.json using Python")
+          except Exception as e:
+            print(f"Error writing credentials2.json using Python: {e}", file=sys.stderr)
+            sys.exit(1)
+      # --- End of new step ---
+
+      # Ensure the next step (Run python webcrawl/web_crawl.py) is correctly indented below
+      - name: Run the web crawl script
+        # ... rest of this step ...
       
       - name: Run the web crawl script
         run: python webcrawl/web_crawl.py
