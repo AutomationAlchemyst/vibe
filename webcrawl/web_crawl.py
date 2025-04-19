@@ -37,9 +37,10 @@ try:
     sheet = gs_client.open_by_key(SHEET_ID).sheet1
     logging.info("Google Sheets API authorized successfully.")
 except Exception as e:
+    except Exception as e:
     logging.error(f"Failed to authorize Google Sheets API: {e}")
-    # Exit if Sheets cannot be accessed, or handle differently
-    exit()
+    print(f"ERROR: Failed to authorize Google Sheets API: {e}") # Add a print statement too
+    raise e # Re-raise the exception to make it visible
 
 # --- Keyword Definitions ---
 keyword_groups = {
