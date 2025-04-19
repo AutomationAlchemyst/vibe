@@ -30,6 +30,13 @@ jobs:
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
+      - name: View Credentials File Content (DEBUG)
+        run: |
+          echo "--- Start credentials2.json content (DEBUG) ---"
+          cat credentials2.json || echo "credentials2.json not found or cat failed"
+          echo "--- End credentials2.json content (DEBUG) ---"
+      # --- END OF ADDED DEBUG STEP ---
+      
       - name: Run the web crawl script
         run: python webcrawl/web_crawl.py
         env:
