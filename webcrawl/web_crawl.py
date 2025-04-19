@@ -551,11 +551,11 @@ def send_email(matched_articles_data): # Takes list of dicts
     msg.attach(html_part)
 
     try:
-        logo_path = "mtfa_logo.png"
+        logo_path = "MTFA_logo.png"
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as img_file:
                 logo = MIMEImage(img_file.read())
-                logo.add_header('Content-ID', '<mtfa_logo>')
+                logo.add_header('Content-ID', '<MTFA_logo>')
                 msg.attach(logo)
         else: logging.warning(f"Logo file not found at {logo_path}. Email will be sent without logo.")
     except Exception as e: logging.error(f"Failed to attach logo image: {e}")
