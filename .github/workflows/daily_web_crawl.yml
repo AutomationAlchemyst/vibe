@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser openai python-dotenv gspread google-oauth2-service-account newspaper3k
+          pip install feedparser openai python-dotenv gspread google-auth newspaper3k
 
       - name: Create Google Credentials file
         # Create the credentials file needed by gspread from the GitHub Secret
