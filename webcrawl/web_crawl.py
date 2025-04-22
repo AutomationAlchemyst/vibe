@@ -17,20 +17,23 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # Load environment variables from creds.env
+# Note: In GitHub Actions, these will come from secrets, so loading creds.env might not be necessary or might be skipped.
+# Consider removing load_dotenv if all variables are reliably set as environment variables in GitHub Actions.
 load_dotenv("creds.env")
 
 # Set up logging
+# Note: In GitHub Actions, consider if writing to a file is needed, or if stdout/stderr logging is sufficient.
 logging.basicConfig(filename="rss_feed.log", level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Load OpenAI API key
-# Ensure OPENAI_API_KEY is set in your creds.env file
+# Ensure OPENAI_API_KEY is set in your environment (GitHub Secrets)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Setup Google Sheets API
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-SHEET_ID = os.getenv("SHEET_ID")  # Your sheet ID in creds.env
-# Ensure credentials2.json path is correct and SHEET_ID is set in creds.env
+SHEET_ID = os.getenv("SHEET_ID")  # Your sheet ID from environment (GitHub Secrets)
+# Ensure credentials2.json exists in the execution environment (created by workflow)
 try:
     creds = Credentials.from_service_account_file("credentials2.json", scopes=SCOPES)
     gs_client = gspread.authorize(creds)
@@ -123,11 +126,19 @@ keyword_groups = {
     "General_SpecialNeeds": ["special needs", "keperluan khas", "OKU", "disability support"],
 }
 
+# >>> START OF CHANGE 1: Add Political Exclusion Keywords <<<
+POLITICAL_EXCLUSION_KEYWORDS = [
+    "political donation", "election", "candidate", "eld", "ge2025",
+    "parliamentary seat", "general election", "nomination paper",
+    "political party", "campaign fund", "election department"
+    # Add any other relevant political terms
+]
+# >>> END OF CHANGE 1 <<<
+
 # Flat list of all keywords used for highlighting in the email
 keywords = [kw for group in keyword_groups.values() for kw in group]
 
 # *** CUSTOMIZE THIS LIST TO CONTROL WHAT GETS SUMMARIZED ***
-# Option A: Include MTFA groups AND specific competitor/peer groups you want summarized.
 CORE_RELEVANT_GROUPS = [
     # MTFA Specific Groups (Definitely keep these)
     "MTFA_Main",
@@ -148,7 +159,7 @@ CORE_RELEVANT_GROUPS = [
 
     # General Topic Groups (Include carefully if desired)
     "General_Beneficiaries",         # May include broad/unrelated "recipient" news
-    "General_Donations",             # May include broad donation news
+    "General_Donations",             # May include broad donation news (will be filtered for political)
     "General_Zakat",                 # If general Zakat news is useful
 ]
 
@@ -259,7 +270,7 @@ def generate_gpt_summary(headline, article_content):
         # Specific check for OpenAI errors might be useful here too
         return "Summary generation failed."
 
-
+# >>> START OF CHANGE 2: Modify contains_keywords function <<<
 def contains_keywords(text, headline, headline_weight=2, content_weight=1, threshold=3):
     # Checks if text/headline contain keywords above a threshold score
     # Returns the best matching relevant keyword and group, or None
@@ -286,20 +297,44 @@ def contains_keywords(text, headline, headline_weight=2, content_weight=1, thres
             current_score = (hl_count * headline_weight) + (txt_count * content_weight)
 
             if current_score > 0:
-                 score += current_score
-                 if group in CORE_RELEVANT_GROUPS and current_score > best_match_score:
-                     best_match_score = current_score
-                     best_match_kw = keyword
-                     best_match_group = group
-                 # Optional early exit removed to ensure best match is found if score met
-                 # if score >= threshold and group in CORE_RELEVANT_GROUPS: return keyword, group
-                 # elif score >= threshold and best_match_kw: return best_match_kw, best_match_group
+                # --- START political exclusion logic ---
+                is_political = False
+                # Only apply exclusion check if the match is from General_Donations group
+                if group == "General_Donations":
+                     # Check if any political exclusion keyword exists in headline or text
+                     for pk in POLITICAL_EXCLUSION_KEYWORDS:
+                         pk_lower = pk.lower()
+                         try:
+                             # Simple check if the political keyword exists anywhere (case-insensitive, whole word)
+                             if re.search(rf"\b{re.escape(pk_lower)}\b", headline_lower, re.IGNORECASE) or \
+                                re.search(rf"\b{re.escape(pk_lower)}\b", text_lower, re.IGNORECASE):
+                                 is_political = True
+                                 logging.info(f"Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.")
+                                 break # Found a political term, no need to check others for this keyword match
+                         except re.error:
+                              logging.warning(f"Regex error checking political keyword '{pk}'. Skipping check for this pk.")
+                              continue # Skip problematic political keyword
 
-    # Check after evaluating all keywords
+                # --- END political exclusion logic ---
+
+                # If it's not a political article (or not from General_Donations group), proceed to score
+                if not is_political:
+                    score += current_score
+                    # Check if this is the best match *within the allowed groups* found so far
+                    if group in CORE_RELEVANT_GROUPS and current_score > best_match_score:
+                        best_match_score = current_score
+                        best_match_kw = keyword
+                        best_match_group = group
+                # If it *was* political, we simply don't add its score or consider it for best_match
+
+    # Check overall score threshold *after* evaluating all keywords
     if score >= threshold and best_match_kw:
+         # Return the best match found among relevant, non-excluded keywords
          return best_match_kw, best_match_group
 
+    # If threshold not met, or no relevant match found after exclusions
     return None, None
+# >>> END OF CHANGE 2 <<<
 
 
 def log_to_google_sheets(date_str, headline, summary, keyword, group, link):
@@ -325,7 +360,7 @@ def parse_rss_feed(feed_url):
         if feed.bozo: # Check if feedparser encountered issues
              logging.warning(f"Feedparser reported issues for {feed_url}: {feed.bozo_exception}")
 
-        date_threshold = datetime.now() - timedelta(days=3)
+        date_threshold = datetime.now() - timedelta(days=3) # Check articles from the last 3 days
 
         for entry in feed.entries:
             published_date = None
@@ -337,34 +372,42 @@ def parse_rss_feed(feed_url):
                 try: published_date = datetime(*entry.updated_parsed[:6])
                 except (ValueError, TypeError): pass
 
+            # Skip entry if no valid date could be parsed
             if not published_date:
                 logging.warning(f"No valid date found for entry: {entry.get('title', 'N/A')} in {feed_url}")
                 continue
 
+            # Check if the article is recent enough
             if published_date >= date_threshold:
                 headline = sanitize_unicode(entry.get('title', 'No Title'))
                 link = sanitize_unicode(entry.get('link', ''))
-                if not link: continue
+                if not link: continue # Skip if no link
 
+                # Prefer full article content, fallback to RSS summary
                 rss_summary = sanitize_unicode(entry.get('summary', ''))
                 full_article_content = fetch_full_article_content(link) # Already sanitized inside
                 content_to_check = sanitize_unicode(full_article_content if len(full_article_content.strip()) > len(rss_summary.strip()) else rss_summary)
 
-                if not content_to_check: continue
+                if not content_to_check: continue # Skip if no content to check
 
+                # Check for keywords (this function now includes the political filter)
                 matched_keyword, keyword_group = contains_keywords(content_to_check, headline)
 
+                # Process only if a keyword matched AND it belongs to a group we care about (CORE_RELEVANT_GROUPS)
                 if matched_keyword and keyword_group in CORE_RELEVANT_GROUPS:
                     logging.info(f"Relevant keyword '{matched_keyword}' (Group: {keyword_group}) found in: {headline}")
-                    time.sleep(2) # Delay before OpenAI call
+
+                    time.sleep(2) # Delay before OpenAI call to avoid rate limits
                     summary = generate_gpt_summary(headline, content_to_check)
 
+                    # Only proceed if summary generation was successful
                     if summary and summary not in ["Summary not available.", "Summary generation failed."]:
                         matched_articles_data.append({
                             "headline": headline, "summary": summary, "link": link,
                             "matched_keyword": matched_keyword, "keyword_group": keyword_group,
                             "published_date": published_date
                         })
+                        # Log to Google Sheets
                         log_to_google_sheets(
                             published_date.strftime('%Y-%m-%d %H:%M:%S'), headline, summary,
                             matched_keyword, keyword_group, link
@@ -372,7 +415,9 @@ def parse_rss_feed(feed_url):
                     else:
                         logging.warning(f"Summary generation failed or skipped for: {headline}")
                 elif matched_keyword:
-                    logging.info(f"Keyword '{matched_keyword}' found in '{headline}' but group '{keyword_group}' not in CORE_RELEVANT_GROUPS. Skipping.")
+                    # Log if a keyword was found but the group wasn't relevant (or was filtered out as political)
+                    # Note: The contains_keywords function already logs political exclusions.
+                    logging.info(f"Keyword '{matched_keyword}' found in '{headline}' but group '{keyword_group}' not in CORE_RELEVANT_GROUPS or excluded. Skipping summary/logging.")
 
     except Exception as e:
         logging.error(f"Error processing feed {feed_url}: {e}")
@@ -394,17 +439,14 @@ def send_email(matched_articles_data): # Takes list of dicts
     quiz_border_color = "#d0d9e2"
 
     # --- Select Random Quiz ---
-    # Ensure there's data to choose from
     quiz_html = ""
     quiz_answer_text = "N/A"
     if mtfa_quiz_data:
         quiz_item = random.choice(mtfa_quiz_data)
         quiz_question = quiz_item["question"]
-        # Format options with line breaks for readability
         quiz_options_html = "<br>".join(quiz_item["options"])
         quiz_answer_text = quiz_item["answer"] # Store answer for footer
 
-        # --- Add Quiz Section HTML ---
         quiz_html = f"""
         <div style="background-color: {quiz_bg_color}; border: 1px solid {quiz_border_color}; padding: 15px 20px; margin-top: 30px; margin-bottom: 30px; border-radius: 6px;">
           <h3 style="color: {mtfa_green}; margin-top: 0; margin-bottom: 12px; font-size: 16px;">🤔 MTFA Quick Quiz!</h3>
@@ -417,7 +459,7 @@ def send_email(matched_articles_data): # Takes list of dicts
         logging.warning("mtfa_quiz_data list is empty. No quiz will be added.")
 
 
-    # --- Categorize Articles (Same logic as before) ---
+    # --- Categorize Articles ---
     categorized_articles = { "MTFA": [], "Competitor": [], "General": [] }
     mtfa_groups = ["MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care",
                    "MTFA_Financial_Aid", "MTFA_Education_Support", "MTFA_Childcare_Service"]
@@ -425,25 +467,32 @@ def send_email(matched_articles_data): # Takes list of dicts
                          "Competitor_MuslimAid_RLAF", "Competitor_MuslimAid_AMP",
                          "Competitor_ChildrenHome_CSLMCH", "Competitor_ChildrenHome_Melrose",
                          "Competitor_IslamicBurial", "Competitor_FreeTuition", "Competitor_Childcare"]
+    # Sort articles into categories
     for article in matched_articles_data:
         group = article['keyword_group']
         if group in mtfa_groups: categorized_articles["MTFA"].append(article)
         elif group in competitor_groups: categorized_articles["Competitor"].append(article)
-        else: categorized_articles["General"].append(article)
+        else: categorized_articles["General"].append(article) # Assumes remaining CORE_RELEVANT_GROUPS fall here
+    # Sort articles within each category by date (newest first)
     for category in categorized_articles:
         categorized_articles[category].sort(key=lambda x: x['published_date'], reverse=True)
 
     # --- Build HTML Body Content ---
     body_content = ""
-    all_keywords_flat = [kw for group in keyword_groups.values() for kw in group]
+    # Use the flat list of all keywords for highlighting
+    all_keywords_flat = keywords # Already defined globally
 
+    # Helper function to create HTML for a category section
     def create_category_html(title, articles):
-        if not articles: return ""
+        if not articles: return "" # Skip section if no articles
         section_html = f'<h2 style="color: {mtfa_green}; border-bottom: 2px solid {divider_color}; padding-bottom: 8px; margin-top: 30px; margin-bottom: 20px; font-size: 20px;">{title}</h2>'
         article_blocks = ""
         for article_data in articles:
+            # Highlight keywords in the summary
             highlighted_summary = highlight_keywords(article_data['summary'], all_keywords_flat)
+            # Style for the link button
             link_button_style = f"display: inline-block; padding: 6px 14px; background-color: {light_accent_bg}; color: {mtfa_green}; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: bold; margin-top: 10px; border: 1px solid {mtfa_green};"
+            # Format each article block
             article_blocks += f"""
             <div style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid {divider_color};">
               <h3 style="color: #212529; margin-bottom: 10px; font-size: 17px; font-weight: 600;">{article_data['headline']}</h3>
@@ -458,18 +507,19 @@ def send_email(matched_articles_data): # Takes list of dicts
             """
         return section_html + article_blocks
 
+    # Create HTML sections for each category
     body_content += create_category_html("MTFA & Subsidiary Updates", categorized_articles["MTFA"])
     body_content += create_category_html("Competitor & Sector News", categorized_articles["Competitor"])
     body_content += create_category_html("General Topics", categorized_articles["General"])
 
+    # Handle case where no relevant articles were found
     if not body_content:
-        # Even if no news, still include quiz? Or just the message? Your choice.
-        # Let's include the quiz even if no articles.
         body_content = "<p style='text-align: center; font-style: italic; color: #6c757d; padding-top: 20px;'>No relevant news items found matching core criteria in today's crawl.</p>"
         logging.info("No relevant articles found to include in email body.")
-        # Add quiz html here if desired even when no articles
+        # Add quiz html even if no articles
         body_content += quiz_html
     else:
+         # Add intro text and quiz if articles were found
          intro_text = f"""
          <p style="font-size: 16px; color: #343a40; text-align: center; margin-bottom: 30px;">
              Key news items related to MTFA, competitors, and relevant topics gathered for {today}.
@@ -497,7 +547,7 @@ def send_email(matched_articles_data): # Takes list of dicts
           {body_content}
           <hr style="border: none; border-top: 1px solid {divider_color}; margin: 30px 0;" />
           <p style="font-size: 12px; text-align: center; color: #6c757d;">
-            
+
             <strong style='color:{mtfa_green};'>Quiz Answer:</strong> {quiz_answer_text}<br><br>
             Automated report generated by MTFA’s Media Monitor Bot.<br>
             Designed by Ath Thaariq Marthas (MSE-OCE) | Powered by Office of the CEO✨<br>
@@ -512,7 +562,7 @@ def send_email(matched_articles_data): # Takes list of dicts
     # Email Sending Logic
     sender_email = os.getenv("SENDER_EMAIL", "ath@mtfa.org") # Get from env or default
     email_password = os.getenv("EMAIL_PASSWORD")
-    
+
     # Main recipient
     to_email = ["abdulqader@mtfa.org"]
 
@@ -529,42 +579,51 @@ def send_email(matched_articles_data): # Takes list of dicts
     # Combine all recipients for logging/checking, though send_message uses headers
     all_recipients = to_email + cc_emails
 
+    # Check for password
     if not email_password:
         logging.error("EMAIL_PASSWORD environment variable not set. Cannot send email.")
         print("EMAIL_PASSWORD environment variable not set. Cannot send email.")
         return # Exit function if no password
 
-    # Check if there are any recipients at all using the combined list
-    if not all_recipients: # <--- CORRECTED LINE
+    # Check for recipients
+    if not all_recipients: # Check the combined list
         logging.error("No recipient emails configured (To or Cc). Cannot send email.")
         print("No recipient emails configured (To or Cc). Cannot send email.")
         return # Exit function if no recipients
 
+    # Create the email message
     msg = MIMEMultipart('related')
     msg['From'] = f"MTFA Media Bot <{sender_email}>"
-
     msg['To'] = ", ".join(to_email)
     msg['Cc'] = ", ".join(cc_emails)
-
     msg['Subject'] = f"MTFA Daily Media Report - {today}"
+
+    # Attach HTML body
     html_part = MIMEText(body, _subtype='html', _charset='utf-8')
     msg.attach(html_part)
 
+    # Attach logo image
     try:
-        logo_path = "webcrawl/MTFA_logo.png" # Uppercase M
+        logo_path = "webcrawl/MTFA_logo.png" # Ensure this path is correct relative to execution dir
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as img_file:
                 logo = MIMEImage(img_file.read())
-                logo.add_header('Content-ID', '<MTFA_logo>')
+                # Ensure Content-ID matches the cid: in the HTML img src
+                logo.add_header('Content-ID', '<mtfa_logo>') # Using lowercase to match HTML
                 msg.attach(logo)
-        else: logging.warning(f"Logo file not found at {logo_path}. Email will be sent without logo.")
-    except Exception as e: logging.error(f"Failed to attach logo image: {e}")
+                logging.info(f"Successfully attached logo from {logo_path}")
+        else:
+            logging.warning(f"Logo file not found at {logo_path}. Email will be sent without logo.")
+    except Exception as e:
+        logging.error(f"Failed to attach logo image: {e}")
 
+    # Send the email
     try:
-        # Ensure you have enabled "less secure app access" for Gmail or use an App Password if 2FA is enabled
+        # Use port 465 for SSL
         smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        smtp_server.ehlo()
+        smtp_server.ehlo() # Optional, for extended hello
         smtp_server.login(sender_email, email_password)
+        # Send to all recipients (To and Cc)
         smtp_server.send_message(msg)
         smtp_server.quit()
         logging.info(f"Email sent successfully To: {msg['To']} Cc: {msg['Cc']}")
@@ -609,17 +668,19 @@ rss_feeds = [
 
 
 # --- Main Execution Logic ---
-# --- Main Execution Logic ---
 if __name__ == "__main__":
     logging.info("Starting script execution...")
+    print("Starting script execution...") # Add print statement for visibility in Actions
     start_time = time.time()
 
     all_matched_articles_data = []
     for feed_url in rss_feeds:
         # Process feed and get list of data dictionaries
+        print(f"Processing feed: {feed_url}") # Add print statement
         articles_data = parse_rss_feed(feed_url)
         if articles_data: # Only extend if data was found
              all_matched_articles_data.extend(articles_data)
+             print(f"Found {len(articles_data)} potential matches in {feed_url}") # Add print statement
 
         # Delay between feeds
         feed_delay = 15 # Reduced delay
@@ -631,10 +692,8 @@ if __name__ == "__main__":
     seen_headlines = set()
     duplicates_found = 0
 
-    # Sort by date first (optional, ensures we keep the earliest encountered version if desired)
-    # all_matched_articles_data.sort(key=lambda x: x['published_date'])
-
     logging.info(f"Collected {len(all_matched_articles_data)} potentially relevant articles. Starting de-duplication...")
+    print(f"Collected {len(all_matched_articles_data)} potentially relevant articles. Starting de-duplication...") # Add print statement
 
     for article_data in all_matched_articles_data:
         # Normalize headline for comparison (lowercase, strip whitespace)
@@ -648,15 +707,18 @@ if __name__ == "__main__":
             logging.info(f"Skipping duplicate headline: {article_data['headline']}")
 
     logging.info(f"De-duplication complete. Found {duplicates_found} duplicates. Keeping {len(unique_articles_data)} unique articles.")
+    print(f"De-duplication complete. Found {duplicates_found} duplicates. Keeping {len(unique_articles_data)} unique articles.") # Add print statement
     # --- End De-duplication Step ---
 
 
     # Send email with the DE-DUPLICATED data
     if unique_articles_data:
         logging.info(f"Preparing email with {len(unique_articles_data)} unique relevant articles.")
+        print(f"Preparing email with {len(unique_articles_data)} unique relevant articles.") # Add print statement
         send_email(unique_articles_data) # Pass the filtered list
     else:
         logging.info("No relevant articles found after de-duplication. Sending notification email.")
+        print("No relevant articles found after de-duplication. Sending notification email.") # Add print statement
         send_email([]) # Sending empty list triggers the "no items" message
 
     end_time = time.time()
