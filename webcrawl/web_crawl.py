@@ -564,11 +564,16 @@ def send_email(matched_articles_data): # Takes list of dicts
     email_password = os.getenv("EMAIL_PASSWORD")
 
     # Main recipient
-    to_email = ["officeofed@mtfa.org"]
+    to_email = ["abdulqader@mtfa.org"]
 
     # CC recipients
     cc_emails = [
-        "officeofed@mtfa.org"
+        "officeofed@mtfa.org",
+        "msaifulmtfa@mtfa.org",
+        "mardhiyyah@mtfa.org",
+        "juliyah@mtfa.org",
+        "sitiumairah@mtfa.org",
+        "farhan.zohri@mtfa.org"
     ]
 
     # Combine all recipients for logging/checking, though send_message uses headers
