@@ -551,7 +551,7 @@ def send_email(matched_articles_data): # Takes list of dicts
     msg.attach(html_part)
 
     try:
-        logo_path = "webcrawl/mtfa_logo.png"
+        logo_path = "webcrawl/MTFA_logo.png" # Uppercase M
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as img_file:
                 logo = MIMEImage(img_file.read())
