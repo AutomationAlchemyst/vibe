@@ -663,7 +663,7 @@ def send_email(matched_articles_data): # Takes list of dicts
         "msaifulmtfa@mtfa.org",
         "mardhiyyah@mtfa.org",
         "juliyah@mtfa.org",
-        "sitiumairah@mtfa.org",
+        "nishani@mtfa.org",
         "farhan.zohri@mtfa.org"
     ]
 
