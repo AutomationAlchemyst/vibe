@@ -685,17 +685,17 @@ def send_email(matched_articles_data): # Takes list of dicts
     to_email = ["ath@mtfa.org"]
 
     # CC recipients - Ensure it's a list
-    #cc_emails = [
-        #"officeofed@mtfa.org",
-        #"msaifulmtfa@mtfa.org",
-        #"mardhiyyah@mtfa.org",
-        #"juliyah@mtfa.org",
-        #"nishani@mtfa.org", # Corrected typo?
-        #"farhan.zohri@mtfa.org"
-    #]
+    cc_emails = [
+        "officeofed@mtfa.org",
+        "msaifulmtfa@mtfa.org",
+        "mardhiyyah@mtfa.org",
+        "juliyah@mtfa.org",
+        "nishani@mtfa.org", # Corrected typo?
+        "farhan.zohri@mtfa.org"
+    ]
 
     # Combine all recipients for logging/checking
-    all_recipients_list = to_email + cc_emails # Use a different name to avoid scope issues
+    all_recipients_list = to_email # Use a different name to avoid scope issues
 
     # Check for password presence
     if not email_password:
