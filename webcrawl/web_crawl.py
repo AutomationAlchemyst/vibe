@@ -132,21 +132,33 @@ keyword_groups = {
 
     # --- General Topics (Use CORE_RELEVANT_GROUPS to control inclusion) ---
     "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable"],
-    # Removed 'giving.sg' as it was catching irrelevant volunteer posts, kept other donation terms
+    # Removed 'giving.sg' keyword
     "General_Donations": ["donation", "derma", "sumbangan", "infaq", "wakaf", "infak", "fundraising", "pengumpulan dana", "donate", "menyumbang"],
     "General_Zakat": ["zakat", "derma zakat", "bayar zakat"],
     "General_ElderlyCare": ["eldercare", "penjagaan warga emas", "rumah orang tua", "old folks home", "needy elderly"],
     "General_SpecialNeeds": ["special needs", "keperluan khas", "OKU", "disability support"],
+    # Added General Charity Sector group
+    "General_CharitySector": [
+        "charity", "charities", "non-profit", "non profit", "NPO", # Common terms
+        "philanthropy", "philanthropic", "social impact", "community initiative",
+        "foundation grant", # Types of funding
+        "NVPC", "National Volunteer & Philanthropy Centre", # Key orgs
+        "NCSS", "National Council of Social Service",
+        "ComChest", "Community Chest",
+        "Temasek Trust", # Major foundations
+        "Tote Board",
+        # Add other relevant sector terms
+    ],
 }
 
-# >>> START OF CHANGE 1: Add Political Exclusion Keywords <<<
+# >>> START OF CHANGE: Add Political Exclusion Keywords <<<
 POLITICAL_EXCLUSION_KEYWORDS = [
     "political donation", "election", "candidate", "eld", "ge2025",
     "parliamentary seat", "general election", "nomination paper",
     "political party", "campaign fund", "election department"
     # Add any other relevant political terms
 ]
-# >>> END OF CHANGE 1 <<<
+# >>> END OF CHANGE <<<
 
 # Flat list of all keywords used for highlighting in the email
 keywords = [kw for group in keyword_groups.values() for kw in group]
@@ -174,6 +186,7 @@ CORE_RELEVANT_GROUPS = [
     "General_Beneficiaries",         # May include broad/unrelated "recipient" news
     "General_Donations",             # May include broad donation news (will be filtered for political)
     "General_Zakat",                 # If general Zakat news is useful
+    "General_CharitySector",         # Include articles matched by general charity terms
 ]
 
 # *** PLACE QUIZ DATA HERE ***
@@ -271,16 +284,27 @@ def generate_gpt_summary(headline, article_content):
         return "Summary generation skipped (OpenAI API key missing)."
     try:
         # Basic check for meaningful content length
-        if not article_content or len(article_content.strip()) < 100: # Adjusted minimum length slightly
+        if not article_content or len(article_content.strip()) < 100:
             logging.warning(f"Content too short or missing for '{headline}'. Skipping summary.")
             return "Summary not available (content too short)."
 
-        content_limit = 3500 # Increased limit slightly, adjust based on typical article size/token limits
-        # Clearer prompt focusing on relevance to Singapore charity/social sector
-        prompt = f"Analyze the following article and summarize its key points relevant to the Singapore charity, social service, or non-profit sector in under 100 words. Exclude purely political news unless it directly impacts this sector.\n\nTitle: {headline}\n\nContent: {article_content[:content_limit]}"
+        content_limit = 3500 # Keep or adjust as needed
+
+        # >>> START OF PROMPT CHANGE <<<
+        # Modified prompt to focus on campaign specifics as per feedback
+        prompt = f"""Analyze the following article regarding a Singaporean context. Summarize its key points in under 100 words, focusing on the **specific details of any mentioned campaign, event, or initiative** (e.g., what is the campaign's goal, who is running it, what are the specific activities or outcomes mentioned?).
+
+        **Avoid generic statements** about platforms (like 'a campaign was launched on Giving.sg'); instead, describe the campaign or initiative itself.
+
+        Prioritize information relevant to charities, social services, non-profits, or community efforts. Exclude purely political news unless it directly impacts this sector.
+
+        Title: {headline}
+
+        Content: {article_content[:content_limit]}"""
+        # >>> END OF PROMPT CHANGE <<<
 
         response = client.chat.completions.create(
-            model="gpt-4o", # Specify desired model
+            model="gpt-4o", # Or your preferred model
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150, # Limit response length
             temperature=0.5 # Adjust for desired creativity/factualness
@@ -301,7 +325,7 @@ def generate_gpt_summary(headline, article_content):
         # Provide more context in the error message returned
         return f"Summary generation failed (error: {type(e).__name__})."
 
-# >>> START OF CHANGE 2: Modify contains_keywords function <<<
+# >>> START OF CHANGE: Modify contains_keywords function <<<
 def contains_keywords(text, headline, headline_weight=2, content_weight=1, threshold=3):
     # Checks if text/headline contain keywords above a threshold score
     # Returns the best matching relevant keyword and group, or None
@@ -372,7 +396,7 @@ def contains_keywords(text, headline, headline_weight=2, content_weight=1, thres
 
     # If threshold not met, or no relevant match found after exclusions
     return None, None
-# >>> END OF CHANGE 2 <<<
+# >>> END OF CHANGE <<<
 
 
 def log_to_google_sheets(date_str, headline, summary, keyword, group, link):
@@ -424,7 +448,7 @@ def parse_rss_feed(feed_url):
 
             # Skip entry if no valid date could be parsed
             if not published_date:
-                logging.warning(f"No valid date found for entry: {getattr(entry, 'title', 'N/A')} in {feed_url}")
+                # logging.warning(f"No valid date found for entry: {getattr(entry, 'title', 'N/A')} in {feed_url}") # Can be verbose
                 continue # Skip this entry
 
             # Check if the article is recent enough
@@ -436,13 +460,15 @@ def parse_rss_feed(feed_url):
 
                 # Prefer full article content if fetched successfully, fallback to RSS summary
                 rss_summary = sanitize_unicode(getattr(entry, 'summary', ''))
+                # Add slight delay before fetching full content
+                time.sleep(random.uniform(0.5, 1.5))
                 full_article_content = fetch_full_article_content(link) # Handles its own sanitization
 
                 # Use the longer content source for keyword checking
                 content_to_check = full_article_content if len(full_article_content.strip()) >= len(rss_summary.strip()) else rss_summary
 
                 if not content_to_check or len(content_to_check.strip()) < 50: # Add minimum length check for content
-                     logging.info(f"Content too short for reliable keyword check: {headline}")
+                     # logging.info(f"Content too short for reliable keyword check: {headline}") # Can be verbose
                      continue # Skip if content is too short
 
                 # Check for keywords (this function now includes the political filter)
@@ -483,7 +509,8 @@ def parse_rss_feed(feed_url):
                 elif matched_keyword:
                     # This case should ideally not be reached if keyword_group is None when political filter applied,
                     # but kept for logging just in case. The political filter logging happens inside contains_keywords.
-                    logging.info(f"Keyword '{matched_keyword}' found in '{headline}' but group '{keyword_group}' not in CORE_RELEVANT_GROUPS or excluded. Skipping.")
+                    # logging.info(f"Keyword '{matched_keyword}' found in '{headline}' but group '{keyword_group}' not in CORE_RELEVANT_GROUPS or excluded. Skipping.") # Verbose
+                    pass # Already logged/printed in contains_keywords if political
 
     except Exception as e:
         # Log any unexpected error during feed processing
@@ -631,7 +658,7 @@ def send_email(matched_articles_data): # Takes list of dicts
             .email-container {{ max-width: 750px; margin: 20px auto; background-color: {container_bg_color}; border-radius: 8px; padding: 30px 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 5px solid {mtfa_green}; }}
             a {{ color: {link_color}; text-decoration: none;}} /* Ensure default underline is off */
             a:hover {{ text-decoration: underline; }} /* Add underline on hover */
-            img {{ max-width: 100%; height: auto; }} /* Responsive images */
+            img {{ max-width: 100%; height: auto; border: 0; }} /* Responsive images, remove border */
         </style>
       </head>
       <body style="padding: 20px; margin: 0; background-color: {body_bg_color};">
@@ -663,7 +690,7 @@ def send_email(matched_articles_data): # Takes list of dicts
         "msaifulmtfa@mtfa.org",
         "mardhiyyah@mtfa.org",
         "juliyah@mtfa.org",
-        "nishani@mtfa.org",
+        "nishani@mtfa.org", # Corrected typo?
         "farhan.zohri@mtfa.org"
     ]
 
@@ -689,6 +716,7 @@ def send_email(matched_articles_data): # Takes list of dicts
     msg['Cc'] = ", ".join(cc_emails) # Format for header
     msg['Subject'] = f"MTFA Daily Media Report - {today}"
     # Set Message-ID for better tracking if needed (optional)
+    # from email.utils import make_msgid
     # msg['Message-ID'] = make_msgid(domain='mtfa.org')
 
     # Attach HTML body - Ensure encoding is explicitly set
@@ -704,7 +732,7 @@ def send_email(matched_articles_data): # Takes list of dicts
     try:
         # Ensure this path is correct relative to the script's execution directory in GitHub Actions
         # Using the consistent lowercase filename assumed based on previous fixes
-        logo_path = "webcrawl/mtfa_logo.png"
+        logo_path = "webcrawl/mtfa_logo.png" # Make sure file is named this in repo
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as img_file:
                 logo = MIMEImage(img_file.read())
@@ -727,7 +755,7 @@ def send_email(matched_articles_data): # Takes list of dicts
         # Use port 465 for SSL connection with Gmail
         smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30) # Added timeout
         # smtp_server.set_debuglevel(1) # Uncomment for verbose SMTP debugging output
-        smtp_server.ehlo() # Optional, for extended hello
+        # smtp_server.ehlo() # Optional, for extended hello
         smtp_server.login(sender_email, email_password)
         # send_message handles To/Cc/Bcc based on message headers
         smtp_server.send_message(msg)
@@ -767,8 +795,8 @@ rss_feeds = [
     "https://news.google.com/rss/search?q=site:muis.gov.sg", # Google News search for MUIS
     'https://news.google.com/rss/search?q=site:msf.gov.sg+OR+"Ministry+of+Social+and+Family+Development"', # Google News search for MSF
 
-    # --- Charity Sector Specific ---
-    "https://news.google.com/rss/search?q=site:giving.sg+donations+OR+fundraising", # Refined Giving.sg search
+    # Add this to your rss_feeds list
+    'https://news.google.com/rss/search?q=site:businesstimes.com.sg+charity+OR+non-profit+OR+philanthropy+OR+"social+impact"',
 
     # --- Direct MTFA Search ---
     "https://news.google.com/rss/search?q=Muslimin+Trust+Fund+Association+Singapore", # Specific search for MTFA
@@ -782,7 +810,7 @@ rss_feeds = [
     # --- Potential Addition: Business Times ---
     # Need to find the correct RSS feed URL for Business Times Singapore Lifestyle/Community section
     # Example placeholder - *Needs verification via search*
-    "https://www.businesstimes.com.sg/rss/lifestyle" # <-- VERIFY THIS URL
+    # "https://www.businesstimes.com.sg/rss/lifestyle" # <-- VERIFY THIS URL - REMOVED as specific feed unknown
 ]
 
 
