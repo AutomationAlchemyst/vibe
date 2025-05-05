@@ -663,7 +663,7 @@ def send_email(matched_articles_data): # Takes list of dicts
       </head>
       <body style="padding: 20px; margin: 0; background-color: {body_bg_color};">
         <div class="email-container">
-          <img src='cid:mtfa_logo' alt='MTFA Logo' style='display:block; margin: 0 auto 25px auto; max-height:70px; border:0;' /> <h1 style="color: {mtfa_green}; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: bold;">MTFA Daily Media Report</h1>
+          <img src='cid:MTFA_logo' alt='MTFA Logo' style='display:block; margin: 0 auto 25px auto; max-height:70px; border:0;' /> <h1 style="color: {mtfa_green}; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: bold;">MTFA Daily Media Report</h1>
           {body_content}
           <hr style="border: none; border-top: 1px solid {divider_color}; margin: 30px 0;" />
           <p style="font-size: 12px; text-align: center; color: #6c757d; line-height: 1.5;"> <strong style='color:{mtfa_green};'>Quiz Answer:</strong> {quiz_answer_text}<br><br>
@@ -682,7 +682,7 @@ def send_email(matched_articles_data): # Takes list of dicts
     email_password = os.getenv("EMAIL_PASSWORD")
 
     # Main recipient(s) - Ensure it's a list
-    to_email = ["ath@mtfa.org"]
+    to_email = ["abdulqader@mtfa.org"]
 
     # CC recipients - Ensure it's a list
     cc_emails = [
@@ -695,7 +695,7 @@ def send_email(matched_articles_data): # Takes list of dicts
     ]
 
     # Combine all recipients for logging/checking
-    all_recipients_list = to_email # Use a different name to avoid scope issues
+    all_recipients_list = to_email + cc_emails # Use a different name to avoid scope issues
 
     # Check for password presence
     if not email_password:
@@ -732,12 +732,12 @@ def send_email(matched_articles_data): # Takes list of dicts
     try:
         # Ensure this path is correct relative to the script's execution directory in GitHub Actions
         # Using the consistent lowercase filename assumed based on previous fixes
-        logo_path = "webcrawl/mtfa_logo.png" # Make sure file is named this in repo
+        logo_path = "webcrawl/MTFA_logo.png" # Make sure file is named this in repo
         if os.path.exists(logo_path):
             with open(logo_path, "rb") as img_file:
                 logo = MIMEImage(img_file.read())
                 # Ensure Content-ID matches the cid: in the HTML img src (use consistent lowercase)
-                logo.add_header('Content-ID', '<mtfa_logo>')
+                logo.add_header('Content-ID', '<MTFA_logo>')
                 msg.attach(logo)
                 logging.info(f"Successfully attached logo from {logo_path}")
                 print(f"INFO: Successfully attached logo from {logo_path}") # Add print
