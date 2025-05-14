@@ -130,6 +130,17 @@ keyword_groups = {
           "Canossaville Children and Community Services",
      ],
 
+    # --- START OF AMENDMENT: New group for other Social Sector Orgs ---
+    "SocialSector_Advocacy_Support": [
+        "HOME", "Humanitarian Organisation for Migration Economics", "H.O.M.E.",
+        "TWC2", "Transient Workers Count Too",
+        "migrant worker support", "foreign worker rights", "domestic worker aid", "migrant workers",
+        "advocacy group", "social justice",
+        # Add other specific orgs or causes MTFA wants to be aware of, e.g., AWARE if relevant
+        # "AWARE Singapore",
+    ],
+    # --- END OF AMENDMENT ---
+
     # --- General Topics (Use CORE_RELEVANT_GROUPS to control inclusion) ---
     "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable"],
     # Removed 'giving.sg' keyword
@@ -181,6 +192,10 @@ CORE_RELEVANT_GROUPS = [
     "Competitor_MuslimAid_AMP",      # Example: Include AMP news
     "Competitor_ChildrenHome_CSLMCH",# Example: Add if needed
     "Competitor_FreeTuition",        # Example: Add if needed
+
+    # --- START OF AMENDMENT: Add new group to CORE ---
+    "SocialSector_Advocacy_Support", # To include news about HOME, migrant workers etc.
+    # --- END OF AMENDMENT ---
 
     # General Topic Groups (Include carefully if desired)
     "General_Beneficiaries",         # May include broad/unrelated "recipient" news
@@ -271,8 +286,8 @@ def highlight_keywords(summary, keywords_to_highlight):
             # Case-insensitive matching
             processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='background-color:#fff1a8;'>\1</span>", processed_summary, flags=re.IGNORECASE) # Softer yellow
         except re.error as re_err:
-             logging.warning(f"Regex error highlighting keyword '{kw}': {re_err}")
-             continue # Skip problematic keyword
+            logging.warning(f"Regex error highlighting keyword '{kw}': {re_err}")
+            continue # Skip problematic keyword
     return processed_summary
 
 
@@ -311,13 +326,13 @@ def generate_gpt_summary(headline, article_content):
         )
         # Check if response is valid and contains content
         if response.choices and response.choices[0].message and response.choices[0].message.content:
-             summary_text = response.choices[0].message.content.strip()
-             logging.info(f"Generated Summary for {headline}: {summary_text[:50]}...") # Log first part
-             return summary_text
+            summary_text = response.choices[0].message.content.strip()
+            logging.info(f"Generated Summary for {headline}: {summary_text[:50]}...") # Log first part
+            return summary_text
         else:
-             logging.error(f"Invalid or empty response from OpenAI for '{headline}': {response}")
-             print(f"ERROR: Invalid or empty response from OpenAI for '{headline}'") # Add print
-             return "Summary generation failed (invalid API response)."
+            logging.error(f"Invalid or empty response from OpenAI for '{headline}': {response}")
+            print(f"ERROR: Invalid or empty response from OpenAI for '{headline}'") # Add print
+            return "Summary generation failed (invalid API response)."
 
     except Exception as e:
         logging.error(f"Error summarizing '{headline}' with OpenAI: {e}")
@@ -342,17 +357,17 @@ def contains_keywords(text, headline, headline_weight=2, content_weight=1, thres
     if not headline_lower and not text_lower:
         return None, None
 
-    for group, group_keywords in keyword_groups.items():
-        for keyword in group_keywords:
+    for group, group_keywords_list in keyword_groups.items(): # Renamed to avoid conflict
+        for keyword in group_keywords_list:
             kw_lower = keyword.lower()
             # Use regex findall for more accurate counting of whole words, handle potential errors
             try:
-                 hl_count = len(re.findall(rf"\b{re.escape(kw_lower)}\b", headline_lower, re.IGNORECASE))
-                 txt_count = len(re.findall(rf"\b{re.escape(kw_lower)}\b", text_lower, re.IGNORECASE))
+                hl_count = len(re.findall(rf"\b{re.escape(kw_lower)}\b", headline_lower, re.IGNORECASE))
+                txt_count = len(re.findall(rf"\b{re.escape(kw_lower)}\b", text_lower, re.IGNORECASE))
             except re.error as find_err:
-                 logging.warning(f"Regex error counting keyword '{keyword}': {find_err}. Skipping count.")
-                 hl_count = 0
-                 txt_count = 0
+                logging.warning(f"Regex error counting keyword '{keyword}': {find_err}. Skipping count.")
+                hl_count = 0
+                txt_count = 0
 
             current_score = (hl_count * headline_weight) + (txt_count * content_weight)
 
@@ -361,21 +376,21 @@ def contains_keywords(text, headline, headline_weight=2, content_weight=1, thres
                 is_political = False
                 # Only apply exclusion check if the match is from General_Donations group
                 if group == "General_Donations":
-                     # Check if any political exclusion keyword exists in headline or text
-                     for pk in POLITICAL_EXCLUSION_KEYWORDS:
-                         pk_lower = pk.lower()
-                         try:
-                             # Simple check if the political keyword exists anywhere (case-insensitive, whole word)
-                             # Using re.search for efficiency (stops at first find)
-                             if re.search(rf"\b{re.escape(pk_lower)}\b", headline_lower, re.IGNORECASE) or \
-                                re.search(rf"\b{re.escape(pk_lower)}\b", text_lower, re.IGNORECASE):
-                                 is_political = True
-                                 logging.info(f"Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.")
-                                 print(f"INFO: Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.") # Add print
-                                 break # Found a political term, no need to check others for this keyword match
-                         except re.error as search_err:
-                              logging.warning(f"Regex error checking political keyword '{pk}': {search_err}. Skipping check for this pk.")
-                              continue # Skip problematic political keyword
+                    # Check if any political exclusion keyword exists in headline or text
+                    for pk in POLITICAL_EXCLUSION_KEYWORDS:
+                        pk_lower = pk.lower()
+                        try:
+                            # Simple check if the political keyword exists anywhere (case-insensitive, whole word)
+                            # Using re.search for efficiency (stops at first find)
+                            if re.search(rf"\b{re.escape(pk_lower)}\b", headline_lower, re.IGNORECASE) or \
+                               re.search(rf"\b{re.escape(pk_lower)}\b", text_lower, re.IGNORECASE):
+                                is_political = True
+                                logging.info(f"Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.")
+                                print(f"INFO: Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.") # Add print
+                                break # Found a political term, no need to check others for this keyword match
+                        except re.error as search_err:
+                            logging.warning(f"Regex error checking political keyword '{pk}': {search_err}. Skipping check for this pk.")
+                            continue # Skip problematic political keyword
 
                 # --- END political exclusion logic ---
 
@@ -392,7 +407,7 @@ def contains_keywords(text, headline, headline_weight=2, content_weight=1, thres
     # Check overall score threshold *after* evaluating all keywords
     # Return the best match found among relevant (CORE_RELEVANT_GROUPS), non-excluded keywords IF threshold met
     if score >= threshold and best_match_kw:
-         return best_match_kw, best_match_group
+        return best_match_kw, best_match_group
 
     # If threshold not met, or no relevant match found after exclusions
     return None, None
@@ -427,9 +442,9 @@ def parse_rss_feed(feed_url):
         feed = feedparser.parse(feed_url, agent=feed_agent) # request_headers={'User-Agent': feed_agent} might also work
 
         if feed.bozo: # Check if feedparser encountered issues
-             # Log warning, but continue processing entries if possible
-             logging.warning(f"Feedparser reported issues for {feed_url}: {feed.bozo_exception}")
-             print(f"WARNING: Feedparser reported issues for {feed_url}: {feed.bozo_exception}") # Add print
+            # Log warning, but continue processing entries if possible
+            logging.warning(f"Feedparser reported issues for {feed_url}: {feed.bozo_exception}")
+            print(f"WARNING: Feedparser reported issues for {feed_url}: {feed.bozo_exception}") # Add print
 
         # Use timezone-aware datetime if possible, otherwise assume UTC or local time consistently
         # For simplicity here, using naive datetime - ensure comparison logic is consistent
@@ -468,8 +483,8 @@ def parse_rss_feed(feed_url):
                 content_to_check = full_article_content if len(full_article_content.strip()) >= len(rss_summary.strip()) else rss_summary
 
                 if not content_to_check or len(content_to_check.strip()) < 50: # Add minimum length check for content
-                     # logging.info(f"Content too short for reliable keyword check: {headline}") # Can be verbose
-                     continue # Skip if content is too short
+                    # logging.info(f"Content too short for reliable keyword check: {headline}") # Can be verbose
+                    continue # Skip if content is too short
 
                 # Check for keywords (this function now includes the political filter)
                 matched_keyword, keyword_group = contains_keywords(content_to_check, headline)
@@ -562,7 +577,8 @@ def send_email(matched_articles_data): # Takes list of dicts
 
 
     # --- Categorize Articles ---
-    categorized_articles = { "MTFA": [], "Competitor": [], "General": [] }
+    # --- START OF AMENDMENT: Add new category for Other Social Sector news ---
+    categorized_articles = { "MTFA": [], "Competitor": [], "OtherSocialSector": [], "General": [] }
     # Define groups clearly using sets for efficient lookup
     mtfa_groups = {"MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care",
                    "MTFA_Financial_Aid", "MTFA_Education_Support", "MTFA_Childcare_Service"}
@@ -570,11 +586,18 @@ def send_email(matched_articles_data): # Takes list of dicts
                          "Competitor_MuslimAid_RLAF", "Competitor_MuslimAid_AMP",
                          "Competitor_ChildrenHome_CSLMCH", "Competitor_ChildrenHome_Melrose",
                          "Competitor_IslamicBurial", "Competitor_FreeTuition", "Competitor_Childcare"}
+    # Define the new group for categorization
+    other_social_sector_groups = {"SocialSector_Advocacy_Support"}
+    # --- END OF AMENDMENT ---
+
     # Sort articles into categories
     for article in matched_articles_data:
         group = article.get('keyword_group') # Use .get for safety
         if group in mtfa_groups: categorized_articles["MTFA"].append(article)
         elif group in competitor_groups: categorized_articles["Competitor"].append(article)
+        # --- START OF AMENDMENT: Categorize into OtherSocialSector ---
+        elif group in other_social_sector_groups: categorized_articles["OtherSocialSector"].append(article)
+        # --- END OF AMENDMENT ---
         # Only add to General if it's in CORE_RELEVANT_GROUPS and not already categorized
         elif group in CORE_RELEVANT_GROUPS: categorized_articles["General"].append(article)
         # Articles not matching any of these will be ignored
@@ -623,7 +646,10 @@ def send_email(matched_articles_data): # Takes list of dicts
 
     # Create HTML sections for each category using the helper function
     body_content += create_category_html("MTFA & Subsidiary Updates", categorized_articles["MTFA"])
-    body_content += create_category_html("Competitor & Sector News", categorized_articles["Competitor"])
+    body_content += create_category_html("Competitor & Peer News", categorized_articles["Competitor"]) # Renamed for clarity
+    # --- START OF AMENDMENT: Add new section to email body ---
+    body_content += create_category_html("Other Social Sector News", categorized_articles["OtherSocialSector"])
+    # --- END OF AMENDMENT ---
     body_content += create_category_html("General Topics", categorized_articles["General"])
 
     # Handle case where no relevant articles were found *after categorization*
@@ -636,14 +662,14 @@ def send_email(matched_articles_data): # Takes list of dicts
         # Add quiz html first, then the 'no news' message
         body_content = quiz_html + no_news_message
     else:
-         # Add intro text and quiz if articles were found
-         intro_text = f"""
-         <p style="font-size: 16px; color: #343a40; text-align: center; margin-bottom: 30px;">
-             Key news items related to MTFA, competitors, and relevant topics gathered for {today}.
-         </p>
-         """
-         # Place quiz after intro, then the generated article content
-         body_content = intro_text + quiz_html + body_content
+        # Add intro text and quiz if articles were found
+        intro_text = f"""
+        <p style="font-size: 16px; color: #343a40; text-align: center; margin-bottom: 30px;">
+            Key news items related to MTFA, competitors, and relevant topics gathered for {today}.
+        </p>
+        """
+        # Place quiz after intro, then the generated article content
+        body_content = intro_text + quiz_html + body_content
 
     # --- Construct the full email body ---
     # Using f-string for easier embedding of variables and ensure DOCTYPE
@@ -763,13 +789,13 @@ def send_email(matched_articles_data): # Takes list of dicts
         logging.info(f"Email sent successfully To: {msg['To']} Cc: {msg['Cc']}")
         print(f"INFO: Email sent successfully To: {msg['To']} Cc: {msg['Cc']}") # Add print
     except smtplib.SMTPAuthenticationError:
-         # Specific error for bad username/password (or App Password needed)
-         logging.error("SMTP Authentication Error: Check sender email and password/app password.")
-         print("ERROR: SMTP Authentication Error: Check sender email and password/app password.") # Add print
+        # Specific error for bad username/password (or App Password needed)
+        logging.error("SMTP Authentication Error: Check sender email and password/app password.")
+        print("ERROR: SMTP Authentication Error: Check sender email and password/app password.") # Add print
     except smtplib.SMTPException as smtp_ex:
-         # Catch other potential SMTP errors (connection, sending, etc.)
-         logging.error(f"SMTP Error occurred: {smtp_ex}", exc_info=True)
-         print(f"ERROR: SMTP Error occurred: {smtp_ex}") # Add print
+        # Catch other potential SMTP errors (connection, sending, etc.)
+        logging.error(f"SMTP Error occurred: {smtp_ex}", exc_info=True)
+        print(f"ERROR: SMTP Error occurred: {smtp_ex}") # Add print
     except Exception as e:
         # Catch any other unexpected errors during SMTP process
         logging.error(f"Failed to send email via SMTP: {e}", exc_info=True) # Log traceback
@@ -807,6 +833,10 @@ rss_feeds = [
     'https://news.google.com/rss/search?q="Rahmatan+Lil+Alamin+Foundation"+RLAF', # RLAF Monitoring
     'https://news.google.com/rss/search?q="Association+of+Muslim+Professionals"+AMP+Singapore', # AMP Monitoring
 
+    # --- START OF AMENDMENT: Added The Online Citizen (via Google News) ---
+    'https://news.google.com/rss/search?q=site:theonlinecitizen.com+(HOME+OR+"Humanitarian+Organisation+for+Migration+Economics"+OR+"migrant+workers"+OR+fundraising+OR+donation+OR+charity+OR+non-profit+OR+advocacy+OR+vulnerable)',
+    # --- END OF AMENDMENT ---
+
     # --- Potential Addition: Business Times ---
     # Need to find the correct RSS feed URL for Business Times Singapore Lifestyle/Community section
     # Example placeholder - *Needs verification via search*
@@ -825,7 +855,7 @@ if __name__ == "__main__":
         # Process feed and get list of data dictionaries
         articles_data = parse_rss_feed(feed_url)
         if articles_data: # Only extend if data was found
-             all_matched_articles_data.extend(articles_data)
+            all_matched_articles_data.extend(articles_data)
 
         # Delay between feeds to be polite to servers
         feed_delay = random.uniform(8, 15) # Random delay between 8-15 seconds
@@ -851,7 +881,7 @@ if __name__ == "__main__":
             seen_headlines.add(normalized_headline)
             unique_articles_data.append(article_data)
         elif not normalized_headline:
-             logging.warning("Encountered article data with empty headline during de-duplication.")
+            logging.warning("Encountered article data with empty headline during de-duplication.")
         else:
             # Log duplicates if needed for debugging
             duplicates_found += 1
