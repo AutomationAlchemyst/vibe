@@ -708,16 +708,11 @@ def send_email(matched_articles_data): # Takes list of dicts
     email_password = os.getenv("EMAIL_PASSWORD")
 
     # Main recipient(s) - Ensure it's a list
-    to_email = ["abdulqader@mtfa.org"]
+    to_email = ["ath@mtfa.org"]
 
     # CC recipients - Ensure it's a list
     cc_emails = [
-        "officeofed@mtfa.org",
-        "msaifulmtfa@mtfa.org",
-        "mardhiyyah@mtfa.org",
-        "juliyah@mtfa.org",
-        "nishani@mtfa.org", # Corrected typo?
-        "farhan.zohri@mtfa.org"
+        "ath@mtfa.org"
     ]
 
     # Combine all recipients for logging/checking
