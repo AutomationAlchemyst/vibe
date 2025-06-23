@@ -564,7 +564,7 @@ def send_email(matched_articles_data):
     to_email = ["abdulqader@mtfa.org"]
     cc_emails = [
         "officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org",
-        "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org"
+        "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "nur.hanisah@mtfa.org"
     ]
     all_recipients_list = to_email + cc_emails
     if not email_password:
