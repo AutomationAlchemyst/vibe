@@ -12,104 +12,234 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from openai import OpenAI
-from newspaper import Article, Config
+from newspaper import Article, Config # Import Config
+# Removed dotenv import as it's not needed when using GitHub Actions secrets
+# from dotenv import load_dotenv
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- Basic Configuration ---
-# Set up logging to file and console
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s [%(levelname)s] %(message)s",
-                    handlers=[
-                        logging.FileHandler("rss_feed.log"),
-                        logging.StreamHandler() # Also print logs to console
-                    ])
+# Removed load_dotenv("creds.env") call
 
-# --- API & Environment Variable Setup ---
+# Set up logging
+# Note: In GitHub Actions, consider if writing to a file is needed, or if stdout/stderr logging is sufficient.
+logging.basicConfig(filename="rss_feed.log", level=logging.INFO,
+                    format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Load OpenAI API key
-# Ensure OPENAI_API_KEY is set in your environment (e.g., GitHub Secrets)
+# Ensure OPENAI_API_KEY is set in your environment (GitHub Secrets)
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
-    logging.error("OPENAI_API_KEY environment variable not set. Summarization will be skipped.")
-    client = None
+    logging.error("OPENAI_API_KEY environment variable not set.")
+    print("ERROR: OPENAI_API_KEY environment variable not set.")
+    # Decide if you want to exit here or proceed without OpenAI
+    # exit(1) # Uncomment to exit if key is mandatory
+    client = None # Set client to None if key is missing
 else:
     client = OpenAI(api_key=openai_api_key)
 
 # Setup Google Sheets API
-# Ensure SHEET_ID is set and credentials2.json is created by your workflow
-SHEET_ID = os.getenv("SHEET_ID")
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SHEET_ID = os.getenv("SHEET_ID")  # Your sheet ID from environment (GitHub Secrets)
+# Ensure credentials2.json exists in the execution environment (created by workflow)
 try:
-    SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_file("credentials2.json", scopes=SCOPES)
     gs_client = gspread.authorize(creds)
     sheet = gs_client.open_by_key(SHEET_ID).sheet1
     logging.info("Google Sheets API authorized successfully.")
+    print("INFO: Google Sheets API authorized successfully.") # Added print
 except FileNotFoundError:
-    logging.error("Failed to authorize Google Sheets API: credentials2.json not found. Check workflow step.")
-    raise
+    logging.error("Failed to authorize Google Sheets API: credentials2.json not found.")
+    print("ERROR: Failed to authorize Google Sheets API: credentials2.json not found. Check workflow step.")
+    raise # Re-raise to make the workflow fail clearly
 except Exception as e:
     logging.error(f"Failed to authorize Google Sheets API: {e}")
-    raise
+    print(f"ERROR: Failed to authorize Google Sheets API: {e}")
+    raise e # Re-raise the exception to make it visible
 
 # --- Keyword Definitions ---
 keyword_groups = {
     # --- Core MTFA & Specific Entities ---
-    "MTFA_Main": ["MTFA", "Muslimin Trust Fund Association", "MTFA Singapore"],
-    "Darul_Ihsan_Orphanage": ["Darul Ihsan Orphanage", "MTFA Darul Ihsan", "rumah anak yatim", "orphanage", "displaced children", "vulnerable youths", "5 Mattar Road", "23 Wan Tho Ave"],
-    "Ihsan_Casket": ["Ihsan Casket", "MTFA Ihsan Casket", "burial service", "funeral service", "Muslim funeral", "Islamic funeral", "jenazah", "pengurusan jenazah", "placenta burial", "free burial", "unclaimed bodies", "ghusl", "funeral management course"],
-    "Ihsan_Kidney_Care": ["Ihsan Kidney Care", "IKC", "MTFA Ihsan Kidney Care", "MTFA dialysis", "dialysis centre", "pusat dialisis", "kidney treatment", "rawatan ginjal", "buah pinggang", "subsidised dialysis"],
-    # --- Core MTFA Service Areas ---
-    "MTFA_Financial_Aid": ["Ihsan Aid", "MTFA financial assistance", "MTFA welfare aid", "MTFA needy families", "MTFA low-income support", "MTFA underprivileged support", "welfareaid@mtfa.org", "MTFA zakat", "MTFA fidyah"],
-    "MTFA_Education_Support": ["Ihsan Education Hub", "MTFA bursary", "MTFA scholarship", "MTFA education award", "MTFA student assistance", "MTFA free tuition"],
+    "MTFA_Main": [
+        "MTFA", "Muslimin Trust Fund Association", "MTFA Singapore",
+        # Add specific campaign names if known e.g., "Eid With Ihsan"
+    ],
+    "Darul_Ihsan_Orphanage": [
+        "Darul Ihsan Orphanage", "MTFA Darul Ihsan", "Darul Ihsan Boys", "Darul Ihsan Girls",
+        "rumah anak yatim", "orphanage", "displaced children", "vulnerable youths",
+         "5 Mattar Road", "23 Wan Tho Ave"
+    ],
+    "Ihsan_Casket": [
+        "Ihsan Casket", "MTFA Ihsan Casket", "burial service", "funeral service",
+        "Muslim funeral", "Islamic funeral", "jenazah", "pengurusan jenazah",
+        "placenta burial", "free burial", "unclaimed bodies", "ghusl",
+        "funeral management course", "info@ihsancasket.com",
+    ],
+    "Ihsan_Kidney_Care": [
+        "Ihsan Kidney Care", "IKC", "MTFA Ihsan Kidney Care", "MTFA dialysis",
+        "dialysis centre", "pusat dialisis", "kidney treatment", "rawatan ginjal",
+        "buah pinggang", "subsidised dialysis", "Norris Rd dialysis",
+    ],
+    # --- Core MTFA Service Areas / Future Entities ---
+    "MTFA_Financial_Aid": [
+        "Ihsan Aid", "MTFA financial assistance", "MTFA welfare aid", "MTFA needy families",
+        "MTFA low-income support", "MTFA underprivileged support", "welfareaid@mtfa.org",
+        "MTFA zakat", "MTFA fidyah",
+    ],
+    "MTFA_Education_Support": [
+        "Ihsan Education Hub", "MTFA bursary", "MTFA scholarship", "MTFA education award",
+        "MTFA student assistance", "MTFA free tuition",
+    ],
+    "MTFA_Childcare_Service": [ # If MTFA starts this specifically
+        "Ihsan Childcare", "MTFA childcare", "MTFA taska", "MTFA tadika", "MTFA nursery",
+    ],
+
     # --- Competitor / Peer Organizations ---
-    "Competitor_Kidney_NKF": ["NKF", "National Kidney Foundation", "NKF Singapore"],
-    "Competitor_Kidney_KDF": ["KDF", "Kidney Dialysis Foundation"],
-    "Competitor_MuslimAid_RLAF": ["RLAF", "Rahmatan Lil Alamin Foundation"],
-    "Competitor_MuslimAid_AMP": ["AMP Singapore", "AMP financial assistance"],
-    "Competitor_ChildrenHome_CSLMCH": ["Chen Su Lan Methodist Children's Home", "CSLMCH"],
-    "Competitor_FreeTuition": ["Children's Wishing Well", "YYD Education Centre", "AMP tuition", "Tzu Chi Seeds of Hope"],
-    # --- Other Social Sector Orgs ---
-    "SocialSector_Advocacy_Support": ["Humanitarian Organisation for Migration Economics", "H.O.M.E.", "TWC2", "Transient Workers Count Too", "migrant worker support", "foreign worker rights", "domestic worker aid", "migrant workers"],
-    # --- General Topics ---
+    "Competitor_Kidney_NKF": [
+        "NKF", "National Kidney Foundation", "NKF Singapore",
+    ],
+    "Competitor_Kidney_KDF": [
+        "KDF", "Kidney Dialysis Foundation",
+    ],
+     "Competitor_Kidney_Other": [
+         "Tzu Chi kidney", "Tzu Chi dialysis",
+     ],
+     "Competitor_MuslimAid_RLAF": [
+         "RLAF", "Rahmatan Lil Alamin Foundation",
+     ],
+     "Competitor_MuslimAid_AMP": [
+         "AMP Singapore", "AMP financial assistance", "AMP SMEF",
+     ],
+     "Competitor_ChildrenHome_CSLMCH": [
+         "Chen Su Lan Methodist Children's Home", "CSLMCH",
+     ],
+     "Competitor_ChildrenHome_Melrose": [
+         "Melrose Home", "Children's Aid Society",
+     ],
+     "Competitor_IslamicBurial": [
+         "Singapore Muslim Casket", "Persatuan Khairat Kematian Singapura",
+         "Takdir Pengurusan Jenazah", "Pengurusan Jenazah Sinaran Baharu"
+     ],
+     "Competitor_FreeTuition": [
+         "Children's Wishing Well",
+         "YYD Education Centre",
+         "AMP tuition",
+         "Tzu Chi Seeds of Hope",
+     ],
+     "Competitor_Childcare": [
+          "MY World Preschool", "Metropolitan YMCA childcare",
+          "Canossaville Children and Community Services",
+     ],
+
+    # --- AMENDED GROUP for other Social Sector Orgs ---
+    "SocialSector_Advocacy_Support": [
+        "Humanitarian Organisation for Migration Economics", "H.O.M.E.", # Made "HOME" more specific
+        "TWC2", "Transient Workers Count Too",
+        "migrant worker support", "foreign worker rights", "domestic worker aid", "migrant workers",
+        # "advocacy group", "social justice", # Consider if these are too broad for your needs.
+                                             # If they pull too much irrelevant content, you can
+                                             # comment them out or make them more specific.
+    ],
+
+    # --- General Topics (Use CORE_RELEVANT_GROUPS to control inclusion) ---
     "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable"],
     "General_Donations": ["donation", "derma", "sumbangan", "infaq", "wakaf", "infak", "fundraising", "pengumpulan dana", "donate", "menyumbang"],
     "General_Zakat": ["zakat", "derma zakat", "bayar zakat"],
-    "General_CharitySector": ["charity", "charities", "non-profit", "NPO", "philanthropy", "social impact", "community initiative", "foundation grant", "NVPC", "NCSS", "ComChest", "Temasek Trust", "Tote Board"],
+    "General_ElderlyCare": ["eldercare", "penjagaan warga emas", "rumah orang tua", "old folks home", "needy elderly"],
+    "General_SpecialNeeds": ["special needs", "keperluan khas", "OKU", "disability support"],
+    "General_CharitySector": [
+        "charity", "charities", "non-profit", "non profit", "NPO", # Common terms
+        "philanthropy", "philanthropic", "social impact", "community initiative",
+        "foundation grant", # Types of funding
+        "NVPC", "National Volunteer & Philanthropy Centre", # Key orgs
+        "NCSS", "National Council of Social Service",
+        "ComChest", "Community Chest",
+        "Temasek Trust", # Major foundations
+        "Tote Board",
+    ],
 }
 
-# Keywords to exclude political articles that might mention "donation"
+# --- AMENDED Political Exclusion Keywords ---
 POLITICAL_EXCLUSION_KEYWORDS = [
-    "political donation", "election", "candidate", "eld", "ge2025", "parliamentary seat",
-    "general election", "nomination paper", "political party", "campaign fund", "election department",
-    "minister", "mp", "member of parliament", "politician", "government official", "allegation",
-    "defamation", "libel", "lawsuit against politician",
+    "political donation", "election", "candidate", "eld", "ge2025",
+    "parliamentary seat", "general election", "nomination paper",
+    "political party", "campaign fund", "election department",
+    "minister", "ministers",                     # Added
+    "MP", "Member of Parliament", "MPs",          # Added
+    "politician", "politicians",                 # Added
+    "government official", "government officials", # Added
+    "allegation", "allegations",                 # Added
+    "defamation", "libel",                       # Added for legal contexts involving public figures
+    "lawsuit against politician",                # Added
+    # Add any other specific political roles or situations you want to exclude
+    # when they are found in an article also mentioning general donation terms.
 ]
+# --- END OF AMENDMENT ---
 
-# Flat list of all keywords for highlighting
-all_keywords_flat = [kw for group in keyword_groups.values() for kw in group]
+# Flat list of all keywords used for highlighting in the email
+keywords = [kw for group in keyword_groups.values() for kw in group]
 
-# Groups of keywords that are important enough to trigger a summary
+# *** CUSTOMIZE THIS LIST TO CONTROL WHAT GETS SUMMARIZED ***
 CORE_RELEVANT_GROUPS = [
-    "MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care",
-    "MTFA_Financial_Aid", "MTFA_Education_Support", "Competitor_Kidney_NKF",
-    "Competitor_Kidney_KDF", "Competitor_MuslimAid_RLAF", "Competitor_MuslimAid_AMP",
-    "Competitor_ChildrenHome_CSLMCH", "Competitor_FreeTuition", "SocialSector_Advocacy_Support",
-    "General_Beneficiaries", "General_Donations", "General_Zakat", "General_CharitySector",
+    # MTFA Specific Groups (Definitely keep these)
+    "MTFA_Main",
+    "Darul_Ihsan_Orphanage",
+    "Ihsan_Casket",
+    "Ihsan_Kidney_Care",
+    "MTFA_Financial_Aid",
+    "MTFA_Education_Support",
+    "MTFA_Childcare_Service",
+
+    # Competitor/Peer Groups (Add the ones you WANT summarized)
+    "Competitor_Kidney_NKF",
+    "Competitor_Kidney_KDF",
+    "Competitor_MuslimAid_RLAF",
+    "Competitor_MuslimAid_AMP",
+    "Competitor_ChildrenHome_CSLMCH",
+    "Competitor_FreeTuition",
+
+    "SocialSector_Advocacy_Support", # To include news about HOME, migrant workers etc.
+
+    # General Topic Groups (Include carefully if desired)
+    "General_Beneficiaries",
+    "General_Donations",
+    "General_Zakat",
+    "General_CharitySector",
 ]
 
-# --- Quiz Data ---
+# *** PLACE QUIZ DATA HERE ***
 mtfa_quiz_data = [
-    {"question": "In which year was the Muslimin Trust Fund Association (MTFA) established?", "options": ["A) 1946", "B) 1962", "C) 1904"], "answer": "C) 1904"},
-    {"question": "What is the name of MTFA's subsidiary providing affordable Islamic burial services?", "options": ["A) Ihsan Aid", "B) Ihsan Casket", "C) Darul Ihsan"], "answer": "B) Ihsan Casket"},
-    {"question": "MTFA's Ihsan Kidney Care provides subsidised dialysis primarily for which group?", "options": ["A) All Singaporeans", "B) Low-income patients", "C) Only MTFA members"], "answer": "B) Low-income patients"},
+    {
+        "question": "In which year was the Muslimin Trust Fund Association (MTFA) established?",
+        "options": ["A) 1946", "B) 1962", "C) 1904"],
+        "answer": "C) 1904"
+    },
+    {
+        "question": "What is the name of MTFA's subsidiary providing affordable Islamic burial services?",
+        "options": ["A) Ihsan Aid", "B) Ihsan Casket", "C) Darul Ihsan"],
+        "answer": "B) Ihsan Casket"
+    },
+    {
+        "question": "MTFA's Ihsan Kidney Care provides subsidised dialysis primarily for which group?",
+        "options": ["A) All Singaporeans", "B) Low-income patients", "C) Only MTFA members"],
+        "answer": "B) Low-income patients"
+    },
+    {
+        "question": "What percentage of donations (according to the website graphic) is channeled to 'childcare homes'?",
+        "options": ["A) 25%", "B) 35%", "C) 5%"],
+        "answer": "B) 35%"
+    },
+    {
+        "question": "Which MTFA entity handles funeral management courses?",
+        "options": ["A) Darul Ihsan Orphanage", "B) Ihsan Kidney Care", "C) Ihsan Casket"],
+        "answer": "C) Ihsan Casket"
+    }
 ]
 
 # --- Utility Functions ---
 
 def sanitize_unicode(text):
-    """Normalizes unicode text to remove problematic characters."""
-    if not isinstance(text, str): return ""
+    if not isinstance(text, str):
+        return ""
     try:
         normalized_text = unicodedata.normalize("NFKD", text)
         return ''.join(c for c in normalized_text if unicodedata.category(c)[0] not in ["C"] or c in ('\n', '\r', '\t'))
@@ -118,46 +248,48 @@ def sanitize_unicode(text):
         return ""
 
 def fetch_full_article_content(article_url):
-    """Fetches article text and top image URL using newspaper3k."""
     try:
         config = Config()
         config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
         config.request_timeout = 20
-        config.fetch_images = True  # Enable image fetching
+        config.fetch_images = False
         article = Article(article_url, config=config)
         article.download()
         article.parse()
-        return article.text, article.top_image
+        return article.text
     except Exception as e:
-        logging.error(f"Failed to fetch/parse article from {article_url}: {e}")
-        return "", None
+        logging.error(f"Failed to fetch/parse article content from {article_url}: {e}")
+        print(f"ERROR: Failed to fetch/parse article content from {article_url}: {e}")
+        return ""
 
 def highlight_keywords(summary, keywords_to_highlight):
-    """Highlights a list of keywords in a given text string."""
     processed_summary = summary
     for kw in sorted(keywords_to_highlight, key=len, reverse=True):
         try:
-            processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='background-color:#fff1a8; font-weight: 600;'>\1</span>", processed_summary, flags=re.IGNORECASE)
+            processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='background-color:#fff1a8;'>\1</span>", processed_summary, flags=re.IGNORECASE)
         except re.error as re_err:
             logging.warning(f"Regex error highlighting keyword '{kw}': {re_err}")
             continue
     return processed_summary
 
 def generate_gpt_summary(headline, article_content):
-    """Generates a summary using the OpenAI API."""
     if not client:
+        logging.warning("OpenAI client not initialized. Skipping summary generation.")
         return "Summary generation skipped (OpenAI API key missing)."
     try:
         if not article_content or len(article_content.strip()) < 100:
-            logging.warning(f"Content too short for '{headline}'. Skipping summary.")
+            logging.warning(f"Content too short or missing for '{headline}'. Skipping summary.")
             return "Summary not available (content too short)."
-
         content_limit = 3500
-        prompt = f"""Analyze the following article from a Singaporean context. Summarize its key points in under 100 words. Focus on the specific details of any mentioned campaign, event, or initiative (e.g., its goal, who is running it, specific activities or outcomes). Prioritize information relevant to charities, social services, or community efforts.
+        prompt = f"""Analyze the following article regarding a Singaporean context. Summarize its key points in under 100 words, focusing on the **specific details of any mentioned campaign, event, or initiative** (e.g., what is the campaign's goal, who is running it, what are the specific activities or outcomes mentioned?).
 
-Title: {headline}
-Content: {article_content[:content_limit]}"""
+        **Avoid generic statements** about platforms (like 'a campaign was launched on Giving.sg'); instead, describe the campaign or initiative itself.
 
+        Prioritize information relevant to charities, social services, non-profits, or community efforts. Exclude purely political news unless it directly impacts this sector.
+
+        Title: {headline}
+
+        Content: {article_content[:content_limit]}"""
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
@@ -166,174 +298,179 @@ Content: {article_content[:content_limit]}"""
         )
         if response.choices and response.choices[0].message and response.choices[0].message.content:
             summary_text = response.choices[0].message.content.strip()
-            logging.info(f"Generated Summary for '{headline[:50]}...'")
+            logging.info(f"Generated Summary for {headline}: {summary_text[:50]}...")
             return summary_text
         else:
             logging.error(f"Invalid or empty response from OpenAI for '{headline}': {response}")
+            print(f"ERROR: Invalid or empty response from OpenAI for '{headline}'")
             return "Summary generation failed (invalid API response)."
     except Exception as e:
         logging.error(f"Error summarizing '{headline}' with OpenAI: {e}")
+        print(f"ERROR: Error summarizing '{headline}' with OpenAI: {e}")
         return f"Summary generation failed (error: {type(e).__name__})."
 
 def contains_keywords(text, headline, headline_weight=2, content_weight=1, threshold=3):
-    """Scores an article based on keyword presence and returns the best match."""
     score = 0
     best_match_kw = None
     best_match_group = None
     best_match_score = 0
     headline_lower = str(headline).lower() if headline else ""
     text_lower = str(text).lower() if text else ""
-
     if not headline_lower and not text_lower:
         return None, None
-
     for group, group_keywords_list in keyword_groups.items():
         for keyword in group_keywords_list:
             kw_lower = keyword.lower()
             try:
                 hl_count = len(re.findall(rf"\b{re.escape(kw_lower)}\b", headline_lower, re.IGNORECASE))
                 txt_count = len(re.findall(rf"\b{re.escape(kw_lower)}\b", text_lower, re.IGNORECASE))
-            except re.error:
-                continue
-
+            except re.error as find_err:
+                logging.warning(f"Regex error counting keyword '{keyword}': {find_err}. Skipping count.")
+                hl_count = 0
+                txt_count = 0
             current_score = (hl_count * headline_weight) + (txt_count * content_weight)
             if current_score > 0:
-                # Political exclusion check for general donation terms
                 is_political = False
                 if group == "General_Donations":
                     for pk in POLITICAL_EXCLUSION_KEYWORDS:
+                        pk_lower = pk.lower()
                         try:
-                            if re.search(rf"\b{pk.lower()}\b", headline_lower, re.IGNORECASE) or \
-                               re.search(rf"\b{pk.lower()}\b", text_lower, re.IGNORECASE):
+                            if re.search(rf"\b{re.escape(pk_lower)}\b", headline_lower, re.IGNORECASE) or \
+                               re.search(rf"\b{re.escape(pk_lower)}\b", text_lower, re.IGNORECASE):
                                 is_political = True
-                                logging.info(f"Ignoring '{keyword}' in '{headline}' due to political term '{pk}'.")
+                                logging.info(f"Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.")
+                                print(f"INFO: Keyword '{keyword}' found in '{headline}', but ignoring due to political term '{pk}'.")
                                 break
-                        except re.error:
+                        except re.error as search_err:
+                            logging.warning(f"Regex error checking political keyword '{pk}': {search_err}. Skipping check for this pk.")
                             continue
-                
                 if not is_political:
                     score += current_score
                     if group in CORE_RELEVANT_GROUPS and current_score > best_match_score:
                         best_match_score = current_score
                         best_match_kw = keyword
                         best_match_group = group
-
     if score >= threshold and best_match_kw:
         return best_match_kw, best_match_group
     return None, None
 
 def log_to_google_sheets(date_str, headline, summary, keyword, group, link):
-    """Appends a new row of data to the configured Google Sheet."""
     try:
-        row_data = [str(date_str), str(headline), str(summary), str(keyword), str(group), str(link)]
+        row_data = [
+            str(date_str), str(headline), str(summary),
+            str(keyword), str(group), str(link)
+        ]
         sheet.append_row(row_data)
         logging.info(f"Successfully logged to Google Sheets: {headline[:50]}...")
+        print(f"INFO: Successfully logged to Google Sheets: {headline[:50]}...")
     except Exception as e:
         logging.error(f"Failed to log to Google Sheets: {e}")
-
-# --- Core Logic ---
+        print(f"ERROR: Failed to log to Google Sheets: {e}")
 
 def parse_rss_feed(feed_url):
-    """Processes a single RSS feed to find and summarize relevant articles."""
     matched_articles_data = []
     logging.info(f"Processing feed: {feed_url}")
+    print(f"INFO: Processing feed: {feed_url}")
     try:
         feed_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
         feed = feedparser.parse(feed_url, agent=feed_agent)
         if feed.bozo:
             logging.warning(f"Feedparser reported issues for {feed_url}: {feed.bozo_exception}")
-
+            print(f"WARNING: Feedparser reported issues for {feed_url}: {feed.bozo_exception}")
         date_threshold = datetime.now() - timedelta(days=3)
         for entry in feed.entries:
             published_date = None
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
                 try: published_date = datetime(*entry.published_parsed[:6])
                 except (ValueError, TypeError, IndexError): pass
-            
-            if not published_date: continue
-            if published_date < date_threshold: continue
-
-            headline = sanitize_unicode(getattr(entry, 'title', 'No Title'))
-            link = sanitize_unicode(getattr(entry, 'link', ''))
-            if not link: continue
-
-            time.sleep(random.uniform(0.5, 1.5))
-            
-            full_article_content, top_image_url = fetch_full_article_content(link)
-            
-            rss_summary = sanitize_unicode(getattr(entry, 'summary', ''))
-            content_to_check = full_article_content if len(full_article_content.strip()) > len(rss_summary.strip()) else rss_summary
-            
-            if not content_to_check or len(content_to_check.strip()) < 50: continue
-
-            matched_keyword, keyword_group = contains_keywords(content_to_check, headline)
-            if matched_keyword and keyword_group:
-                logging.info(f"Relevant keyword '{matched_keyword}' (Group: {keyword_group}) found in: {headline}")
-                time.sleep(random.uniform(1, 3))
-                
-                summary = generate_gpt_summary(headline, content_to_check)
-                
-                failed_summaries = {"Summary not available (content too short).",
-                                    "Summary generation failed (invalid API response).",
-                                    "Summary generation skipped (OpenAI API key missing)."}
-                is_failed_summary = summary in failed_summaries or summary.startswith("Summary generation failed")
-
-                if summary and not is_failed_summary:
-                    article_data = {
-                        "headline": headline, "summary": summary, "link": link,
-                        "matched_keyword": matched_keyword, "keyword_group": keyword_group,
-                        "published_date": published_date, "top_image": top_image_url
-                    }
-                    matched_articles_data.append(article_data)
-                    log_to_google_sheets(
-                        published_date.strftime('%Y-%m-%d %H:%M:%S'), headline, summary,
-                        matched_keyword, keyword_group, link
-                    )
-                else:
-                    logging.warning(f"Summary failed for: {headline}. Reason: {summary}")
-
+            if not published_date and hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+                try: published_date = datetime(*entry.updated_parsed[:6])
+                except (ValueError, TypeError, IndexError): pass
+            if not published_date:
+                continue
+            if published_date >= date_threshold:
+                headline = sanitize_unicode(getattr(entry, 'title', 'No Title'))
+                link = sanitize_unicode(getattr(entry, 'link', ''))
+                if not link: continue
+                rss_summary = sanitize_unicode(getattr(entry, 'summary', ''))
+                time.sleep(random.uniform(0.5, 1.5))
+                full_article_content = fetch_full_article_content(link)
+                content_to_check = full_article_content if len(full_article_content.strip()) >= len(rss_summary.strip()) else rss_summary
+                if not content_to_check or len(content_to_check.strip()) < 50:
+                    continue
+                matched_keyword, keyword_group = contains_keywords(content_to_check, headline)
+                if matched_keyword and keyword_group:
+                    logging.info(f"Relevant keyword '{matched_keyword}' (Group: {keyword_group}) found in: {headline}")
+                    print(f"INFO: Relevant keyword '{matched_keyword}' (Group: {keyword_group}) found in: {headline}")
+                    time.sleep(random.uniform(1, 3))
+                    summary = generate_gpt_summary(headline, content_to_check)
+                    failed_summaries = {"Summary not available (content too short).",
+                                        "Summary generation failed (invalid API response).",
+                                        "Summary generation skipped (OpenAI API key missing)."}
+                    is_failed_summary = summary in failed_summaries or summary.startswith("Summary generation failed")
+                    if summary and not is_failed_summary:
+                        matched_articles_data.append({
+                            "headline": headline, "summary": summary, "link": link,
+                            "matched_keyword": matched_keyword, "keyword_group": keyword_group,
+                            "published_date": published_date
+                        })
+                        log_to_google_sheets(
+                            published_date.strftime('%Y-%m-%d %H:%M:%S'), headline, summary,
+                            matched_keyword, keyword_group, link
+                        )
+                    else:
+                        logging.warning(f"Summary generation failed or skipped for: {headline}. Reason: {summary}")
+                        print(f"WARNING: Summary generation failed or skipped for: {headline}. Reason: {summary}")
+                elif matched_keyword:
+                    pass
     except Exception as e:
         logging.error(f"Unexpected error processing feed {feed_url}: {e}", exc_info=True)
+        print(f"ERROR: Unexpected error processing feed {feed_url}: {e}")
     return matched_articles_data
 
 def send_email(matched_articles_data):
-    """Constructs and sends the final HTML email report."""
     today = datetime.now().strftime('%A, %d %B %Y')
     sheet_link = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}" if SHEET_ID else "#"
-    
-    # --- Email Styling ---
     mtfa_green = "#006a4e"
     mtfa_blue = "#0d47a1"
-    body_bg_color = "#f4f7f6"
+    link_color = mtfa_blue
+    light_accent_bg = "#e8f5e9"
+    divider_color = "#eeeeee"
+    body_bg_color = "#f8f9fa"
     container_bg_color = "#ffffff"
-    divider_color = "#e9ecef"
-    text_color = "#495057"
-    heading_color = "#212529"
-    
-    # --- Quiz Section ---
+    quiz_bg_color = "#eef2f7"
+    quiz_border_color = "#d0d9e2"
     quiz_html = ""
     quiz_answer_text = "N/A"
     if mtfa_quiz_data:
         try:
             quiz_item = random.choice(mtfa_quiz_data)
             quiz_question = quiz_item.get("question", "Quiz question missing.")
-            quiz_options_html = "<br>".join(quiz_item.get("options", []))
+            quiz_options = quiz_item.get("options", [])
+            quiz_options_html = "<br>".join(quiz_options) if quiz_options else "Options missing."
             quiz_answer_text = quiz_item.get("answer", "Answer missing.")
             quiz_html = f"""
-            <div style="background-color: #e8f5e9; border: 1px solid #c8e6c9; padding: 20px; margin: 30px 0; border-radius: 8px;">
-              <h3 style="color: {mtfa_green}; margin-top: 0; margin-bottom: 12px; font-size: 16px; font-weight: 600;">🤔 MTFA Quick Quiz!</h3>
-              <p style="font-size: 15px; color: #333; line-height: 1.6; margin: 0 0 10px 0;">{quiz_question}</p>
-              <p style="font-size: 14px; color: #555; line-height: 1.6; margin: 0;">{quiz_options_html}</p>
-              <p style="font-size: 12px; color: #555; margin-top: 15px; font-style: italic;">(Answer revealed in the footer!)</p>
+            <div style="background-color: {quiz_bg_color}; border: 1px solid {quiz_border_color}; padding: 15px 20px; margin-top: 30px; margin-bottom: 30px; border-radius: 6px;">
+              <h3 style="color: {mtfa_green}; margin-top: 0; margin-bottom: 12px; font-size: 16px;">🤔 MTFA Quick Quiz!</h3>
+              <p style="font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 10px;">{quiz_question}</p>
+              <p style="font-size: 14px; color: #555; line-height: 1.6;">{quiz_options_html}</p>
+              <p style="font-size: 12px; color: #777; margin-top: 10px;"><i>(Answer revealed in the footer!)</i></p>
             </div>
             """
-        except (IndexError, KeyError, TypeError) as e:
-            logging.warning(f"Could not format quiz item: {e}")
+        except (IndexError, KeyError, TypeError) as quiz_err:
+            logging.warning(f"Could not select/format quiz item: {quiz_err}")
+            quiz_html = ""
+            quiz_answer_text = "Error loading quiz"
+    else:
+        logging.warning("mtfa_quiz_data list is empty. No quiz will be added.")
 
-    # --- Categorize Articles ---
     categorized_articles = { "MTFA": [], "Competitor": [], "OtherSocialSector": [], "General": [] }
-    mtfa_groups = {"MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care", "MTFA_Financial_Aid", "MTFA_Education_Support"}
-    competitor_groups = {k for k in keyword_groups if k.startswith("Competitor_")}
+    mtfa_groups = {"MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care",
+                   "MTFA_Financial_Aid", "MTFA_Education_Support", "MTFA_Childcare_Service"}
+    competitor_groups = {"Competitor_Kidney_NKF", "Competitor_Kidney_KDF", "Competitor_Kidney_Other",
+                         "Competitor_MuslimAid_RLAF", "Competitor_MuslimAid_AMP",
+                         "Competitor_ChildrenHome_CSLMCH", "Competitor_ChildrenHome_Melrose",
+                         "Competitor_IslamicBurial", "Competitor_FreeTuition", "Competitor_Childcare"}
     other_social_sector_groups = {"SocialSector_Advocacy_Support"}
 
     for article in matched_articles_data:
@@ -346,177 +483,218 @@ def send_email(matched_articles_data):
     for category in categorized_articles:
         categorized_articles[category].sort(key=lambda x: x.get('published_date', datetime.min), reverse=True)
 
-    # --- HTML Generation for Article Cards ---
+    body_content = ""
+    all_keywords_flat = keywords
+
     def create_category_html(title, articles):
         if not articles: return ""
-        section_html = f'<h2 style="color: {mtfa_green}; border-bottom: 2px solid {divider_color}; padding-bottom: 10px; margin-top: 35px; margin-bottom: 25px; font-size: 20px; font-weight: 600;">{title}</h2>'
+        section_html = f'<h2 style="color: {mtfa_green}; border-bottom: 2px solid {divider_color}; padding-bottom: 8px; margin-top: 30px; margin-bottom: 20px; font-size: 20px;">{title}</h2>'
         article_blocks = ""
-        for article in articles:
-            headline = article.get('headline', 'No Headline')
-            summary = article.get('summary', 'Summary not available.')
-            link = article.get('link', '#')
-            pub_date = article.get('published_date')
-            group = article.get('keyword_group', 'N/A')
-            keyword = article.get('matched_keyword', 'N/A')
-            image_url = article.get('top_image')
-            
-            highlighted_summary = highlight_keywords(summary, all_keywords_flat)
-            
-            image_html = ""
-            if image_url:
-                image_html = f'''
-                <tr>
-                    <td style="padding-bottom: 15px;">
-                        <img src="{image_url}" alt="Article Image" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 6px 6px 0 0;" onerror="this.style.display='none'">
-                    </td>
-                </tr>
-                '''
-
+        for article_data in articles:
+            summary_text = article_data.get('summary', 'Summary not available.')
+            headline_text = article_data.get('headline', 'No Headline')
+            link_url = article_data.get('link', '#')
+            published_dt = article_data.get('published_date')
+            keyword_group_text = article_data.get('keyword_group', 'N/A')
+            matched_keyword_text = article_data.get('matched_keyword', 'N/A')
+            highlighted_summary = highlight_keywords(summary_text, all_keywords_flat)
+            link_button_style = f"display: inline-block; padding: 6px 14px; background-color: {light_accent_bg}; color: {mtfa_green}; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: bold; margin-top: 10px; border: 1px solid {mtfa_green};"
             article_blocks += f"""
-            <div style="margin-bottom: 25px; border-radius: 8px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid {divider_color};">
-                <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                    {image_html}
-                    <tr>
-                        <td style="padding: 20px 25px 25px 25px;">
-                            <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                                <tr>
-                                    <td style="padding-bottom: 10px;">
-                                        <h3 style="color: {heading_color}; margin: 0; font-size: 18px; font-weight: 600;">{headline}</h3>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding-bottom: 20px;">
-                                        <p style="margin: 0; font-size: 15px; color: {text_color}; line-height: 1.65;">{highlighted_summary}</p>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding-bottom: 20px;">
-                                        <a href="{link}" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: {mtfa_green}; color: #ffffff; text-decoration: none; border-radius: 5px; font-size: 14px; font-weight: bold;">Read Full Article</a>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="font-size: 12px; color: #6c757d; line-height: 1.5; border-top: 1px solid {divider_color}; padding-top: 15px;">
-                                        <strong>Published:</strong> {pub_date.strftime('%d %b %Y') if pub_date else 'N/A'}<br>
-                                        <strong>Group:</strong> {group} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Keyword:</strong> {keyword}
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
+            <div style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid {divider_color};">
+              <h3 style="color: #212529; margin-bottom: 10px; font-size: 17px; font-weight: 600;">{headline_text}</h3>
+              <p style="font-size: 15px; color: #343a40; line-height: 1.65; margin-bottom: 10px;"><strong>Summary:</strong> {highlighted_summary}</p>
+              <a href="{link_url}" target="_blank" style="{link_button_style}">🔗 Read Full Article</a>
+              <p style="font-size: 12px; color: #6c757d; margin-top: 12px;">
+                  Published: {published_dt.strftime('%d %b %Y, %H:%M') if published_dt else 'N/A'} |
+                  🔖 Group: {keyword_group_text} |
+                  🔍 Keyword: {matched_keyword_text}
+              </p>
             </div>
             """
         return section_html + article_blocks
 
-    body_content = ""
     body_content += create_category_html("MTFA & Subsidiary Updates", categorized_articles["MTFA"])
     body_content += create_category_html("Competitor & Peer News", categorized_articles["Competitor"])
     body_content += create_category_html("Other Social Sector News", categorized_articles["OtherSocialSector"])
     body_content += create_category_html("General Topics", categorized_articles["General"])
 
     if not any(categorized_articles.values()):
-        no_news_message = "<p style='text-align: center; font-style: italic; color: #6c757d; padding: 40px 20px; font-size: 16px;'>No relevant news items found matching core criteria in the last 3 days.</p>"
+        no_news_message = "<p style='text-align: center; font-style: italic; color: #6c757d; padding-top: 20px;'>No relevant news items found matching core criteria in today's crawl.</p>"
+        logging.info("No relevant articles found to include in email body after categorization.")
+        print("INFO: No relevant articles found to include in email body after categorization.")
         body_content = quiz_html + no_news_message
     else:
-        intro_text = f"""<p style="font-size: 16px; color: {text_color}; text-align: center; margin-bottom: 0;">
-                         Key news items related to MTFA, competitors, and relevant topics.</p>"""
+        intro_text = f"""
+        <p style="font-size: 16px; color: #343a40; text-align: center; margin-bottom: 30px;">
+            Key news items related to MTFA, competitors, and relevant topics gathered for {today}.
+        </p>
+        """
         body_content = intro_text + quiz_html + body_content
 
-    # --- Final HTML Email Assembly ---
     body = f"""<!DOCTYPE html>
     <html lang="en">
-    <head>
+      <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MTFA Daily Media Report</title>
-        <style>
+        <title>MTFA Daily Media Report</title> <style>
             body, h1, h2, h3, p {{ margin: 0; padding: 0; font-family: Verdana, Geneva, Tahoma, sans-serif; }}
             body {{ background-color: {body_bg_color}; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }}
-            .email-container {{ max-width: 750px; margin: 20px auto; background-color: {container_bg_color}; border-radius: 8px; padding: 30px 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-top: 5px solid {mtfa_green}; }}
-            a {{ color: {mtfa_blue}; text-decoration: none;}}
+            .email-container {{ max-width: 750px; margin: 20px auto; background-color: {container_bg_color}; border-radius: 8px; padding: 30px 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 5px solid {mtfa_green}; }}
+            a {{ color: {link_color}; text-decoration: none;}}
             a:hover {{ text-decoration: underline; }}
             img {{ max-width: 100%; height: auto; border: 0; }}
         </style>
-    </head>
-    <body style="padding: 20px; margin: 0; background-color: {body_bg_color};">
+      </head>
+      <body style="padding: 20px; margin: 0; background-color: {body_bg_color};">
         <div class="email-container">
-            <img src='cid:MTFA_logo' alt='MTFA Logo' style='display:block; margin: 0 auto 20px auto; max-height:65px;' />
-            <h1 style="color: {heading_color}; text-align: center; margin-bottom: 10px; font-size: 24px; font-weight: bold;">Daily Media Report</h1>
-            <p style="color: {text_color}; text-align: center; margin-bottom: 20px; font-size: 16px;">{today}</p>
-            {body_content}
-            <hr style="border: none; border-top: 1px solid {divider_color}; margin: 30px 0;" />
-            <p style="font-size: 13px; text-align: center; color: #6c757d; line-height: 1.6;">
-                <strong style='color:{mtfa_green};'>Quiz Answer:</strong> {quiz_answer_text}<br><br>
-                Automated report by MTFA’s Media Monitor Bot.<br>
-                Designed by Ath Thaariq Marthas (MSE-OCE) | Powered by Office of the CEO✨<br>
-                <a href="{sheet_link}" target="_blank" style="color: {mtfa_blue}; text-decoration: none; font-weight: bold;">📊 View History in Google Sheets</a>
-            </p>
+          <img src='cid:MTFA_logo' alt='MTFA Logo' style='display:block; margin: 0 auto 25px auto; max-height:70px; border:0;' /> <h1 style="color: {mtfa_green}; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: bold;">MTFA Daily Media Report</h1>
+          {body_content}
+          <hr style="border: none; border-top: 1px solid {divider_color}; margin: 30px 0;" />
+          <p style="font-size: 12px; text-align: center; color: #6c757d; line-height: 1.5;"> <strong style='color:{mtfa_green};'>Quiz Answer:</strong> {quiz_answer_text}<br><br>
+            Automated report generated by MTFA’s Media Monitor Bot.<br>
+            Designed by Ath Thaariq Marthas (MSE-OCE) | Powered by Office of the CEO✨<br>
+            <a href="{sheet_link}" target="_blank" style="color: {link_color}; text-decoration: none; font-weight: bold;">📊 View history in Google Sheets</a>
+          </p>
         </div>
-    </body>
+      </body>
     </html>
     """
-    
-    # --- Email Sending Logic ---
-    sender_email = os.getenv("SENDER_EMAIL")
+    sender_email = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
     email_password = os.getenv("EMAIL_PASSWORD")
     to_email = ["abdulqader@mtfa.org"]
     cc_emails = [
         "officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org",
-        "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org", 
-        "akram.hanif@mtfa.org", "nur.hanisah@mtfa.org"
+        "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "nur.hanisah@mtfa.org"
     ]
-    
-    if not all([sender_email, email_password]):
-        logging.error("SENDER_EMAIL or EMAIL_PASSWORD environment variables not set. Cannot send email.")
+    all_recipients_list = to_email + cc_emails
+    if not email_password:
+        logging.error("EMAIL_PASSWORD environment variable not set. Cannot send email.")
+        print("ERROR: EMAIL_PASSWORD environment variable not set. Cannot send email.")
+        return
+    if not all_recipients_list:
+        logging.error("No recipient emails configured (To or Cc). Cannot send email.")
+        print("ERROR: No recipient emails configured (To or Cc). Cannot send email.")
         return
 
     msg = MIMEMultipart('related')
     msg['From'] = f"MTFA Media Bot <{sender_email}>"
     msg['To'] = ", ".join(to_email)
     msg['Cc'] = ", ".join(cc_emails)
-    msg['Subject'] = f"MTFA Media Report - {today}"
-    
-    msg.attach(MIMEText(body, 'html', 'utf-8'))
+    msg['Subject'] = f"MTFA Daily Media Report - {today}"
+    try:
+        html_part = MIMEText(body, _subtype='html', _charset='utf-8')
+        msg.attach(html_part)
+    except Exception as e:
+        logging.error(f"Error encoding or attaching HTML body: {e}")
+        print(f"ERROR: Error encoding or attaching HTML body: {e}")
+        return
 
     try:
-        logo_path = "webcrawl/MTFA_logo.png" # Adjust path as needed
-        with open(logo_path, "rb") as img_file:
-            logo = MIMEImage(img_file.read())
-            logo.add_header('Content-ID', '<MTFA_logo>')
-            msg.attach(logo)
-            logging.info(f"Successfully attached logo from {logo_path}")
-    except FileNotFoundError:
-        logging.warning(f"Logo file not found at {logo_path}. Email will be sent without logo.")
+        logo_path = "webcrawl/MTFA_logo.png"
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as img_file:
+                logo = MIMEImage(img_file.read())
+                logo.add_header('Content-ID', '<MTFA_logo>')
+                msg.attach(logo)
+                logging.info(f"Successfully attached logo from {logo_path}")
+                print(f"INFO: Successfully attached logo from {logo_path}")
+        else:
+            logging.warning(f"Logo file not found at {logo_path}. Email will be sent without logo.")
+            print(f"WARNING: Logo file not found at {logo_path}.")
     except Exception as e:
-        logging.error(f"Failed to attach logo image: {e}")
+        logging.error(f"Failed to attach logo image: {e}", exc_info=True)
+        print(f"ERROR: Failed to attach logo image: {e}")
 
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(sender_email, email_password)
-            server.send_message(msg, from_addr=sender_email, to_addrs=to_email + cc_emails)
-            logging.info("Email sent successfully!")
+        smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30)
+        smtp_server.login(sender_email, email_password)
+        smtp_server.send_message(msg)
+        smtp_server.quit()
+        logging.info(f"Email sent successfully To: {msg['To']} Cc: {msg['Cc']}")
+        print(f"INFO: Email sent successfully To: {msg['To']} Cc: {msg['Cc']}")
+    except smtplib.SMTPAuthenticationError:
+        logging.error("SMTP Authentication Error: Check sender email and password/app password.")
+        print("ERROR: SMTP Authentication Error: Check sender email and password/app password.")
+    except smtplib.SMTPException as smtp_ex:
+        logging.error(f"SMTP Error occurred: {smtp_ex}", exc_info=True)
+        print(f"ERROR: SMTP Error occurred: {smtp_ex}")
     except Exception as e:
-        logging.error(f"Failed to send email: {e}", exc_info=True)
+        logging.error(f"Failed to send email via SMTP: {e}", exc_info=True)
+        print(f"ERROR: Failed to send email via SMTP: {e}")
 
+# --- RSS Feed List ---
+rss_feeds = [
+    # --- Major Singapore News ---
+    "https://www.straitstimes.com/news/singapore/rss.xml",
+    "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416", # CNA Singapore Feed
+    "https://www.todayonline.com/feed",
+    "https://www.asiaone.com/rss/latest.xml",
+    "https://www.tnp.sg/rss.xml", # The New Paper
 
-# --- Main Execution ---
+    # --- Malay Language News ---
+    "https://news.google.com/rss/search?q=site:beritaharian.sg", # Google News search for Berita Harian
+
+    # --- Relevant Gov / Statutory Boards ---
+    "https://news.google.com/rss/search?q=site:muis.gov.sg", # Google News search for MUIS
+    'https://news.google.com/rss/search?q=site:msf.gov.sg+OR+"Ministry+of+Social+and+Family+Development"', # Google News search for MSF
+
+    'https://news.google.com/rss/search?q=site:businesstimes.com.sg+charity+OR+non-profit+OR+philanthropy+OR+"social+impact"',
+
+    # --- Direct MTFA Search ---
+    "https://news.google.com/rss/search?q=Muslimin+Trust+Fund+Association+Singapore", # Specific search for MTFA
+
+    # --- Key Competitor/Peer Monitoring (via Google News) ---
+    'https://news.google.com/rss/search?q="National+Kidney+Foundation"+NKF+Singapore', # NKF Monitoring
+    'https://news.google.com/rss/search?q="Kidney+Dialysis+Foundation"+KDF+Singapore', # KDF Monitoring
+    'https://news.google.com/rss/search?q="Rahmatan+Lil+Alamin+Foundation"+RLAF', # RLAF Monitoring
+    'https://news.google.com/rss/search?q="Association+of+Muslim+Professionals"+AMP+Singapore', # AMP Monitoring
+
+    # --- AMENDED: The Online Citizen (via Google News) ---
+    'https://news.google.com/rss/search?q=site:theonlinecitizen.com+("Humanitarian+Organisation+for+Migration+Economics"+OR+"H.O.M.E."+OR+"migrant+workers"+OR+TWC2+OR+fundraising+OR+advocacy)',
+]
+
+# --- Main Execution Logic ---
 if __name__ == "__main__":
-    rss_feeds = [
-        "https://www.straitstimes.com/news/singapore/rss.xml",
-        "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311", # CNA Singapore
-        "https://www.todayonline.com/singapore/rss",
-        "https://berita.mediacorp.sg/rss/singapura", # Berita Mediacorp
-        "http://www.asiaone.com/rss/singapore"
-    ]
-    
-    all_matched_articles = []
-    for url in rss_feeds:
-        all_matched_articles.extend(parse_rss_feed(url))
-        time.sleep(random.uniform(1, 2))
+    logging.info("--- Script Execution Started ---")
+    print("--- Script Execution Started ---")
+    start_time = time.time()
 
-    if all_matched_articles:
-        send_email(all_matched_articles)
+    all_matched_articles_data = []
+    for feed_url in rss_feeds:
+        articles_data = parse_rss_feed(feed_url)
+        if articles_data:
+            all_matched_articles_data.extend(articles_data)
+        feed_delay = random.uniform(8, 15)
+        logging.info(f"Finished processing {feed_url}. Waiting {feed_delay:.2f} seconds...")
+        time.sleep(feed_delay)
+
+    unique_articles_data = []
+    seen_headlines = set()
+    duplicates_found = 0
+    logging.info(f"Collected {len(all_matched_articles_data)} potentially relevant articles. Starting de-duplication...")
+    print(f"INFO: Collected {len(all_matched_articles_data)} potentially relevant articles. Starting de-duplication...")
+    for article_data in all_matched_articles_data:
+        headline_text = article_data.get('headline', '')
+        normalized_headline = str(headline_text).lower().strip() if headline_text else ""
+        if normalized_headline and normalized_headline not in seen_headlines:
+            seen_headlines.add(normalized_headline)
+            unique_articles_data.append(article_data)
+        elif not normalized_headline:
+            logging.warning("Encountered article data with empty headline during de-duplication.")
+        else:
+            duplicates_found += 1
+    logging.info(f"De-duplication complete. Found {duplicates_found} duplicates. Keeping {len(unique_articles_data)} unique articles.")
+    print(f"INFO: De-duplication complete. Found {duplicates_found} duplicates. Keeping {len(unique_articles_data)} unique articles.")
+
+    if unique_articles_data:
+        logging.info(f"Preparing email with {len(unique_articles_data)} unique relevant articles.")
+        print(f"INFO: Preparing email with {len(unique_articles_data)} unique relevant articles.")
+        send_email(unique_articles_data)
     else:
-        logging.info("No new relevant articles found across all feeds. No email will be sent.")
-        # Optional: Send an email even if there's no news
-        # send_email([]) 
+        logging.info("No relevant articles found after de-duplication. Sending notification email.")
+        print("INFO: No relevant articles found after de-duplication. Sending notification email.")
+        send_email([])
+
+    end_time = time.time()
+    logging.info(f"--- Script Execution Finished. Total time: {end_time - start_time:.2f} seconds. ---")
+    print(f"--- Script Execution Finished. Total time: {end_time - start_time:.2f} seconds. ---")
