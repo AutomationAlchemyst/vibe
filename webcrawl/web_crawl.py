@@ -431,17 +431,21 @@ def parse_rss_feed(feed_url):
 def send_email(matched_articles_data):
     today = datetime.now().strftime('%A, %d %B %Y')
     sheet_link = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}" if SHEET_ID else "#"
-    mtfa_green = "#006a4e"
-    mtfa_blue = "#0d47a1"
-    link_color = mtfa_blue
-    light_accent_bg = "#e8f5e9"
-    divider_color = "#eeeeee"
-    body_bg_color = "#f8f9fa"
-    container_bg_color = "#ffffff"
-    quiz_bg_color = "#eef2f7"
-    quiz_border_color = "#d0d9e2"
-    quiz_html = ""
+
+    # --- STEP 1: REFINED COLOR PALETTE ---
+    brand_primary = "#006a4e"      # MTFA Green for major headings & accents
+    brand_secondary = "#0d47a1"    # MTFA Blue for links
+    text_primary = "#212529"       # Dark gray for body text, easier on the eyes than pure black
+    text_secondary = "#6c757d"     # Lighter gray for metadata, dates, etc.
+    border_color = "#dee2e6"       # Light gray for dividers and card borders
+    background_light = "#f8f9fa"   # Off-white for the main email body
+    background_white = "#ffffff"   # Pure white for cards/content containers
+    
     quiz_answer_text = "N/A"
+    
+    # --- STEP 3: REFINED QUIZ DESIGN ---
+    quiz_bg_color = "#eef2f7" # A soft, cool gray-blue
+    quiz_html = ""
     if mtfa_quiz_data:
         try:
             quiz_item = random.choice(mtfa_quiz_data)
@@ -450,11 +454,11 @@ def send_email(matched_articles_data):
             quiz_options_html = "<br>".join(quiz_options) if quiz_options else "Options missing."
             quiz_answer_text = quiz_item.get("answer", "Answer missing.")
             quiz_html = f"""
-            <div style="background-color: {quiz_bg_color}; border: 1px solid {quiz_border_color}; padding: 15px 20px; margin-top: 30px; margin-bottom: 30px; border-radius: 6px;">
-              <h3 style="color: {mtfa_green}; margin-top: 0; margin-bottom: 12px; font-size: 16px;">🤔 MTFA Quick Quiz!</h3>
-              <p style="font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 10px;">{quiz_question}</p>
-              <p style="font-size: 14px; color: #555; line-height: 1.6;">{quiz_options_html}</p>
-              <p style="font-size: 12px; color: #777; margin-top: 10px;"><i>(Answer revealed in the footer!)</i></p>
+            <div style="background-color: {quiz_bg_color}; border: 1px solid #d0d9e2; padding: 20px 25px; margin-top: 20px; margin-bottom: 40px; border-radius: 8px; text-align: center;">
+              <h3 style="color: {brand_primary}; margin-top: 0; margin-bottom: 15px; font-size: 18px; font-weight: 600;">&#10024; MTFA Quick Quiz!</h3>
+              <p style="font-size: 15px; color: {text_primary}; line-height: 1.6; margin-bottom: 12px;">{quiz_question}</p>
+              <p style="font-size: 14px; color: {text_secondary}; line-height: 1.6;">{quiz_options_html}</p>
+              <p style="font-size: 12px; color: #777; margin-top: 15px;"><i>(Answer revealed in the footer!)</i></p>
             </div>
             """
         except (IndexError, KeyError, TypeError) as quiz_err:
@@ -488,7 +492,16 @@ def send_email(matched_articles_data):
 
     def create_category_html(title, articles):
         if not articles: return ""
-        section_html = f'<h2 style="color: {mtfa_green}; border-bottom: 2px solid {divider_color}; padding-bottom: 8px; margin-top: 30px; margin-bottom: 20px; font-size: 20px;">{title}</h2>'
+        # --- STEP 3: REFINED SECTION HEADER ---
+        section_html = f'''<h2 style="color: {brand_primary};
+                           border-bottom: 1px solid {border_color};
+                           padding-bottom: 12px;
+                           margin-top: 40px;
+                           margin-bottom: 25px;
+                           font-size: 22px;
+                           font-weight: 600;">
+                               &#128226; {title}
+                           </h2>'''
         article_blocks = ""
         for article_data in articles:
             summary_text = article_data.get('summary', 'Summary not available.')
@@ -498,17 +511,25 @@ def send_email(matched_articles_data):
             keyword_group_text = article_data.get('keyword_group', 'N/A')
             matched_keyword_text = article_data.get('matched_keyword', 'N/A')
             highlighted_summary = highlight_keywords(summary_text, all_keywords_flat)
-            link_button_style = f"display: inline-block; padding: 6px 14px; background-color: {light_accent_bg}; color: {mtfa_green}; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: bold; margin-top: 10px; border: 1px solid {mtfa_green};"
+            
+            # --- STEP 2: REFINED ARTICLE CARD DESIGN ---
             article_blocks += f"""
-            <div style="margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid {divider_color};">
-              <h3 style="color: #212529; margin-bottom: 10px; font-size: 17px; font-weight: 600;">{headline_text}</h3>
-              <p style="font-size: 15px; color: #343a40; line-height: 1.65; margin-bottom: 10px;"><strong>Summary:</strong> {highlighted_summary}</p>
-              <a href="{link_url}" target="_blank" style="{link_button_style}">🔗 Read Full Article</a>
-              <p style="font-size: 12px; color: #6c757d; margin-top: 12px;">
-                  Published: {published_dt.strftime('%d %b %Y, %H:%M') if published_dt else 'N/A'} |
-                  🔖 Group: {keyword_group_text} |
-                  🔍 Keyword: {matched_keyword_text}
+            <div style="margin-bottom: 25px; padding: 25px; border: 1px solid {border_color}; border-radius: 8px; background-color: {background_white};">
+              <h3 style="color: {text_primary}; margin-bottom: 12px; font-size: 18px; font-weight: 600;">{headline_text}</h3>
+              
+              <p style="font-size: 15px; color: {text_primary}; line-height: 1.6; margin-bottom: 20px;">
+                <strong style="color: {brand_primary};">Summary:</strong> {highlighted_summary}
               </p>
+              
+              <a href="{link_url}" target="_blank" style="display: inline-block; padding: 10px 18px; background-color: {brand_primary}; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600;">
+                Read Full Article &#8594;
+              </a>
+              
+              <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid {border_color}; font-size: 12px; color: {text_secondary};">
+                  Published: {published_dt.strftime('%d %b %Y, %H:%M') if published_dt else 'N/A'} |
+                  Group: {keyword_group_text} |
+                  Keyword: {matched_keyword_text}
+              </div>
             </div>
             """
         return section_html + article_blocks
@@ -525,35 +546,64 @@ def send_email(matched_articles_data):
         body_content = quiz_html + no_news_message
     else:
         intro_text = f"""
-        <p style="font-size: 16px; color: #343a40; text-align: center; margin-bottom: 30px;">
+        <p style="font-size: 16px; color: {text_primary}; text-align: center; margin-bottom: 30px;">
             Key news items related to MTFA, competitors, and relevant topics gathered for {today}.
         </p>
         """
         body_content = intro_text + quiz_html + body_content
 
+    # --- FINAL HTML BODY WITH UPDATED STYLES ---
     body = f"""<!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MTFA Daily Media Report</title> <style>
-            body, h1, h2, h3, p {{ margin: 0; padding: 0; font-family: Verdana, Geneva, Tahoma, sans-serif; }}
-            body {{ background-color: {body_bg_color}; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }}
-            .email-container {{ max-width: 750px; margin: 20px auto; background-color: {container_bg_color}; border-radius: 8px; padding: 30px 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); border-top: 5px solid {mtfa_green}; }}
-            a {{ color: {link_color}; text-decoration: none;}}
-            a:hover {{ text-decoration: underline; }}
-            img {{ max-width: 100%; height: auto; border: 0; }}
+        <title>MTFA Daily Media Report</title>
+        <style>
+            body, h1, h2, h3, p {{
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            }}
+            body {{
+                background-color: {background_light};
+                -webkit-text-size-adjust: 100%;
+                -ms-text-size-adjust: 100%;
+            }}
+            .email-container {{
+                max-width: 750px;
+                margin: 40px auto;
+                background-color: {background_white};
+                border-radius: 8px;
+                padding: 30px 40px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                border-top: 5px solid {brand_primary};
+            }}
+            a {{
+                color: {brand_secondary};
+                text-decoration: none;
+            }}
+            a:hover {{
+                text-decoration: underline;
+            }}
+            img {{
+                max-width: 100%;
+                height: auto;
+                border: 0;
+            }}
         </style>
       </head>
-      <body style="padding: 20px; margin: 0; background-color: {body_bg_color};">
+      <body style="padding: 20px; margin: 0; background-color: {background_light};">
         <div class="email-container">
-          <img src='cid:MTFA_logo' alt='MTFA Logo' style='display:block; margin: 0 auto 25px auto; max-height:70px; border:0;' /> <h1 style="color: {mtfa_green}; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: bold;">MTFA Daily Media Report</h1>
+          <img src='cid:MTFA_logo' alt='MTFA Logo' style='display:block; margin: 0 auto 25px auto; max-height:70px; border:0;' />
+          <h1 style="color: {brand_primary}; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: bold;">MTFA Daily Media Report</h1>
           {body_content}
-          <hr style="border: none; border-top: 1px solid {divider_color}; margin: 30px 0;" />
-          <p style="font-size: 12px; text-align: center; color: #6c757d; line-height: 1.5;"> <strong style='color:{mtfa_green};'>Quiz Answer:</strong> {quiz_answer_text}<br><br>
+          <hr style="border: none; border-top: 1px solid {border_color}; margin: 30px 0;" />
+          <p style="font-size: 12px; text-align: center; color: {text_secondary}; line-height: 1.5;">
+            <strong style='color:{brand_primary};'>Quiz Answer:</strong> {quiz_answer_text}<br><br>
             Automated report generated by MTFA’s Media Monitor Bot.<br>
             Designed by Ath Thaariq Marthas (MSE-OCE) | Powered by Office of the CEO✨<br>
-            <a href="{sheet_link}" target="_blank" style="color: {link_color}; text-decoration: none; font-weight: bold;">📊 View history in Google Sheets</a>
+            <a href="{sheet_link}" target="_blank" style="color: {brand_secondary}; text-decoration: none; font-weight: bold;">📊 View history in Google Sheets</a>
           </p>
         </div>
       </body>
