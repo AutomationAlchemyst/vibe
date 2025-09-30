@@ -614,7 +614,7 @@ def send_email(matched_articles_data):
     to_email = ["abdulqader@mtfa.org"]
     cc_emails = [
         "officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org",
-        "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "nur.hanisah@mtfa.org"
+        "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "nasrullah@mtfa.org", "muzdalifah@mtfa.org", "sheikh.anwarul@mtfa.org", "shafawati@mtfa.org", "mani@mtfa.org"
     ]
     all_recipients_list = to_email + cc_emails
     if not email_password:
@@ -748,3 +748,4 @@ if __name__ == "__main__":
     end_time = time.time()
     logging.info(f"--- Script Execution Finished. Total time: {end_time - start_time:.2f} seconds. ---")
     print(f"--- Script Execution Finished. Total time: {end_time - start_time:.2f} seconds. ---")
+
