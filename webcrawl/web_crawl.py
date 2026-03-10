@@ -43,7 +43,7 @@ except Exception as e:
     print(f"ERROR: Failed to authorize Google Sheets API: {e}")
     raise e
 
-# --- Keyword Definitions (Restored) ---
+# --- Keyword Definitions (Restored & Comprehensive) ---
 keyword_groups = {
     "MTFA_Main": ["MTFA", "Muslimin Trust Fund Association", "MTFA Singapore"],
     "Darul_Ihsan_Orphanage": ["Darul Ihsan Orphanage", "MTFA Darul Ihsan", "Darul Ihsan Boys", "Darul Ihsan Girls", "rumah anak yatim", "orphanage", "displaced children", "vulnerable youths", "5 Mattar Road", "23 Wan Tho Ave"],
@@ -54,7 +54,6 @@ keyword_groups = {
     "MTFA_Childcare_Service": ["Ihsan Childcare", "MTFA childcare", "MTFA taska", "MTFA tadika", "MTFA nursery"],
     "Competitor_Kidney_NKF": ["NKF", "National Kidney Foundation", "NKF Singapore"],
     "Competitor_Kidney_KDF": ["KDF", "Kidney Dialysis Foundation"],
-    "Competitor_Kidney_Other": ["Tzu Chi kidney", "Tzu Chi dialysis"],
     "Competitor_MuslimAid_RLAF": ["RLAF", "Rahmatan Lil Alamin Foundation"],
     "Competitor_MuslimAid_AMP": ["AMP Singapore", "AMP financial assistance", "AMP SMEF"],
     "Competitor_ChildrenHome_CSLMCH": ["Chen Su Lan Methodist Children's Home", "CSLMCH"],
@@ -66,14 +65,12 @@ keyword_groups = {
     "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable"],
     "General_Donations": ["donation", "derma", "sumbangan", "infaq", "wakaf", "infak", "fundraising", "pengumpulan dana", "donate", "menyumbang"],
     "General_Zakat": ["zakat", "derma zakat", "bayar zakat"],
-    "General_ElderlyCare": ["eldercare", "penjagaan warga emas", "rumah orang tua", "old folks home", "needy elderly"],
-    "General_SpecialNeeds": ["special needs", "keperluan khas", "OKU", "disability support"],
     "General_CharitySector": ["charity", "charities", "non-profit", "non profit", "NPO", "philanthropy", "philanthropic", "social impact", "community initiative", "foundation grant", "NVPC", "NCSS", "ComChest", "Temasek Trust", "Tote Board"],
 }
 
 POLITICAL_EXCLUSION_KEYWORDS = ["political donation", "election", "candidate", "eld", "ge2025", "parliamentary seat", "general election", "nomination paper", "political party", "campaign fund", "election department", "minister", "ministers", "MP", "Member of Parliament", "MPs", "politician", "politicians", "government official", "government officials", "allegation", "allegations", "defamation", "libel", "lawsuit against politician"]
 
-CORE_RELEVANT_GROUPS = ["MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care", "MTFA_Financial_Aid", "MTFA_Education_Support", "MTFA_Childcare_Service", "Competitor_Kidney_NKF", "Competitor_Kidney_KDF", "Competitor_MuslimAid_RLAF", "Competitor_MuslimAid_AMP", "Competitor_ChildrenHome_CSLMCH", "Competitor_FreeTuition", "SocialSector_Advocacy_Support", "General_Beneficiaries", "General_Donations", "General_Zakat", "General_CharitySector"]
+CORE_RELEVANT_GROUPS = list(keyword_groups.keys())
 
 mtfa_quiz_data = [
     {"question": "In which year was the Muslimin Trust Fund Association (MTFA) established?", "options": ["A) 1946", "B) 1962", "C) 1904"], "answer": "C) 1904"},
@@ -83,20 +80,13 @@ mtfa_quiz_data = [
     {"question": "Which MTFA entity handles funeral management courses?", "options": ["A) Darul Ihsan Orphanage", "B) Ihsan Kidney Care", "C) Ihsan Casket"], "answer": "C) Ihsan Casket"}
 ]
 
-# Flat list for highlighting
 keywords = [kw for group in keyword_groups.values() for kw in group]
 
-# --- Core Functions ---
-
-def sanitize_unicode(text):
-    if not isinstance(text, str): return ""
-    normalized_text = unicodedata.normalize("NFKD", text)
-    return ''.join(c for c in normalized_text if unicodedata.category(c)[0] not in ["C"] or c in ('\n', '\r', '\t'))
+# --- Functions ---
 
 def fetch_full_article_content(article_url):
     try:
         config = Config()
-        # Source Improvement: Randomizing User Agents to prevent bot detection
         agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
@@ -119,11 +109,10 @@ def highlight_keywords(summary, keywords_to_highlight):
 def generate_gpt_summary(headline, article_content):
     if not client: return "Summary generation skipped (OpenAI API key missing).", "NEUTRAL"
     try:
-        # Outlook Improvement: Integrated Sentiment Analysis into prompt
         prompt = f"""Summarize this Singaporean news article in under 90 words. 
         Focus on specific details of mentioned campaigns, events, or initiatives.
         
-        At the end of your summary, provide a sentiment tag based on impact for the charity sector: [POSITIVE], [NEUTRAL], or [NEGATIVE].
+        At the end of your summary, provide a sentiment tag: [POSITIVE], [NEUTRAL], or [NEGATIVE].
 
         Title: {headline}
         Content: {article_content[:3500]}"""
@@ -135,29 +124,24 @@ def generate_gpt_summary(headline, article_content):
             temperature=0.4
         )
         output = response.choices[0].message.content.strip()
-        
-        # Extract sentiment and clean text
         sentiment = "NEUTRAL"
         if "[POSITIVE]" in output: sentiment = "POSITIVE"
         elif "[NEGATIVE]" in output: sentiment = "NEGATIVE"
         clean_summary = re.sub(r'\[.*?\]', '', output).strip()
-        
         return clean_summary, sentiment
-    except Exception as e:
-        return f"Summary generation failed.", "NEUTRAL"
+    except:
+        return "Summary failed.", "NEUTRAL"
 
 def contains_keywords(text, headline):
     score, best_kw, best_group = 0, None, None
     best_match_score = 0
     h_lower, t_lower = headline.lower(), text.lower()
-    
     for group, group_kws in keyword_groups.items():
         for kw in group_kws:
             kw_l = kw.lower()
             h_count = len(re.findall(rf"\b{re.escape(kw_l)}\b", h_lower, re.IGNORECASE))
             t_count = len(re.findall(rf"\b{re.escape(kw_l)}\b", t_lower, re.IGNORECASE))
             current_score = (h_count * 2) + t_count
-            
             if current_score > 0:
                 is_political = any(re.search(rf"\b{re.escape(pk.lower())}\b", f"{h_lower} {t_lower}", re.IGNORECASE) for pk in POLITICAL_EXCLUSION_KEYWORDS)
                 if not is_political:
@@ -167,99 +151,61 @@ def contains_keywords(text, headline):
                         best_kw, best_group = kw, group
     return (best_kw, best_group) if score >= 3 and best_kw else (None, None)
 
-def log_to_google_sheets(date_str, headline, summary, keyword, group, link):
-    try:
-        sheet.append_row([str(date_str), str(headline), str(summary), str(keyword), str(group), str(link)])
-    except: pass
-
 def send_email(matched_articles_data):
     today = datetime.now().strftime('%A, %d %B %Y')
     brand_green = "#006a4e"
     brand_blue = "#0d47a1"
     bg_light = "#f4f7f6"
     
-    # Calculate Dashboard Stats
     total_count = len(matched_articles_data)
-    mtfa_hits = sum(1 for a in matched_articles_data if a['keyword_group'] in ["MTFA_Main", "Darul_Ihsan_Orphanage", "Ihsan_Casket", "Ihsan_Kidney_Care", "MTFA_Financial_Aid", "MTFA_Education_Support", "MTFA_Childcare_Service"])
+    mtfa_hits = sum(1 for a in matched_articles_data if "MTFA" in a['keyword_group'] or "Ihsan" in a['keyword_group'])
+    sentiment_map = {"POSITIVE": {"bg": "#e8f5e9", "text": "#2e7d32"}, "NEGATIVE": {"bg": "#ffebee", "text": "#c62828"}, "NEUTRAL": {"bg": "#eef2f7", "text": "#455a64"}}
 
-    # Sentiment styling
-    sentiment_map = {
-        "POSITIVE": {"bg": "#e8f5e9", "text": "#2e7d32"},
-        "NEGATIVE": {"bg": "#ffebee", "text": "#c62828"},
-        "NEUTRAL": {"bg": "#eef2f7", "text": "#455a64"}
-    }
-
-    # Quiz Logic
     quiz_item = random.choice(mtfa_quiz_data)
-    quiz_html = f"""
-    <div style="background-color: #eef2f7; border: 1px solid #d0d9e2; padding: 20px; margin: 20px 0; border-radius: 12px; text-align: center;">
-        <h3 style="color: {brand_green}; margin: 0 0 10px 0; font-size: 18px;">✨ MTFA Quick Quiz!</h3>
-        <p style="font-size: 15px; color: #212529; margin-bottom: 10px;">{quiz_item['question']}</p>
+    quiz_html = f"""<div style="background-color: #eef2f7; border: 1px solid #d0d9e2; padding: 20px; margin: 20px 0; border-radius: 12px; text-align: center;">
+        <h3 style="color: {brand_green}; margin: 0 0 10px 0;">✨ MTFA Quick Quiz!</h3>
+        <p style="font-size: 15px;">{quiz_item['question']}</p>
         <p style="font-size: 14px; color: #666;">{"<br>".join(quiz_item['options'])}</p>
     </div>"""
 
-    # Categorization Logic
-    categorized = { "MTFA": [], "Competitor": [], "Other": [] }
-    for article in matched_articles_data:
-        grp = article['keyword_group']
-        if "MTFA" in grp or "Ihsan" in grp: categorized["MTFA"].append(article)
-        elif "Competitor" in grp: categorized["Competitor"].append(article)
-        else: categorized["Other"].append(article)
-
     content_html = ""
-    for cat_name, articles in categorized.items():
-        if not articles: continue
-        content_html += f'<h2 style="color:{brand_green}; border-bottom:2px solid {brand_green}; padding-bottom:5px; margin-top:30px;">{cat_name} Updates</h2>'
-        for art in articles:
-            s_style = sentiment_map.get(art['sentiment'], sentiment_map["NEUTRAL"])
-            highlighted = highlight_keywords(art['summary'], keywords)
-            img_html = f'<img src="{art["image"]}" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px 8px 0 0;">' if art["image"] else ""
-            
-            content_html += f"""
-            <div style="background:white; border:1px solid #ddd; border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                {img_html}
-                <div style="padding:20px;">
-                    <span style="background:{s_style['bg']}; color:{s_style['text']}; padding:3px 10px; border-radius:15px; font-size:11px; font-weight:bold;">{art['sentiment']}</span>
-                    <h3 style="margin:10px 0; color:#333; font-size:17px;">{art['headline']}</h3>
-                    <p style="font-size:14px; line-height:1.6; color:#444;">{highlighted}</p>
-                    <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
-                        <a href="{art['link']}" style="color:{brand_blue}; font-weight:bold; font-size:13px; text-decoration:none;">Read Full Article →</a>
-                        <span style="font-size:11px; color:#888;">{art['keyword_group']}</span>
-                    </div>
+    for art in matched_articles_data:
+        s_style = sentiment_map.get(art['sentiment'], sentiment_map["NEUTRAL"])
+        highlighted = highlight_keywords(art['summary'], keywords)
+        img_html = f'<img src="{art["image"]}" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px 8px 0 0;">' if art["image"] else ""
+        content_html += f"""
+        <div style="background:white; border:1px solid #ddd; border-radius:12px; margin-bottom:20px; overflow:hidden;">
+            {img_html}
+            <div style="padding:20px;">
+                <span style="background:{s_style['bg']}; color:{s_style['text']}; padding:3px 10px; border-radius:15px; font-size:11px; font-weight:bold;">{art['sentiment']}</span>
+                <h3 style="margin:10px 0; color:#333;">{art['headline']}</h3>
+                <p style="font-size:14px;">{highlighted}</p>
+                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#888;">
+                    <a href="{art['link']}" style="color:{brand_blue}; font-weight:bold; text-decoration:none;">Read Full Article →</a>
+                    <span>{art['keyword_group']} | {art['date'].strftime('%d %b')}</span>
                 </div>
-            </div>"""
+            </div>
+        </div>"""
 
-    # Full Email Construction
-    email_body = f"""
-    <html>
-    <body style="background-color:{bg_light}; padding:20px; font-family: 'Segoe UI', Arial, sans-serif;">
-        <div style="max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; border-top:8px solid {brand_green}; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
+    email_body = f"""<html><body style="background-color:{bg_light}; padding:20px; font-family: 'Segoe UI', Arial, sans-serif;">
+        <div style="max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; border-top:8px solid {brand_green};">
             <div style="padding:30px; text-align:center;">
                 <img src="cid:MTFA_logo" style="max-height:70px; margin-bottom:15px;">
                 <h1 style="color:{brand_green}; margin:0; font-size:24px;">Daily Media Intelligence</h1>
-                <p style="color:#888; font-size:14px;">{today} | Office of the CEO</p>
+                <p style="color:#888; font-size:14px;">{today}</p>
             </div>
-            
             <div style="background:{brand_green}; padding:15px; display:flex; justify-content:space-around; text-align:center; color:white;">
-                <div><div style="font-size:22px; font-weight:bold;">{total_count}</div><div style="font-size:10px; opacity:0.8;">NEWS HITS</div></div>
-                <div><div style="font-size:22px; font-weight:bold;">{mtfa_hits}</div><div style="font-size:10px; opacity:0.8;">MTFA MENTIONS</div></div>
+                <div><div style="font-size:22px; font-weight:bold;">{total_count}</div><div style="font-size:10px;">NEWS HITS</div></div>
+                <div><div style="font-size:22px; font-weight:bold;">{mtfa_hits}</div><div style="font-size:10px;">MTFA HITS</div></div>
             </div>
-
-            <div style="padding:30px;">
-                {quiz_html}
-                {content_html if matched_articles_data else "<p style='text-align:center; color:#999;'>No matches found today.</p>"}
-            </div>
-            
-            <div style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
+            <div style="padding:30px;">{quiz_html} {content_html if matched_articles_data else "<p style='text-align:center;'>No fresh matches found.</p>"}</div>
+            <div style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; color:#777;">
                 <strong>Quiz Answer:</strong> {quiz_item['answer']}<br><br>
-                Report generated by <b>MTFA Media Bot</b><br>
-                Designed by Ath Thaariq (MSE-OCE) | <a href="https://docs.google.com/spreadsheets/d/{SHEET_ID}" style="color:{brand_blue};">View Logs</a>
+                Designed by Ath Thaariq (MSE-OCE) | <a href="https://docs.google.com/spreadsheets/d/{SHEET_ID}">View Logs</a>
             </div>
         </div>
-    </body>
-    </html>"""
+    </body></html>"""
 
-    # Send Logic (Restored full CC list)
     sender = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
     pw = os.getenv("EMAIL_PASSWORD")
     to = ["abdulqader@mtfa.org"]
@@ -283,7 +229,6 @@ def send_email(matched_articles_data):
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(sender, pw)
             server.send_message(msg)
-            print("INFO: Email sent successfully.")
 
 # --- Execution ---
 if __name__ == "__main__":
@@ -297,28 +242,29 @@ if __name__ == "__main__":
 
     all_data = []
     seen = set()
+    # Strict 3-day threshold for modern news
+    date_limit = datetime.now() - timedelta(days=3)
     
     for url in rss_feeds:
         feed = feedparser.parse(url)
-        for entry in feed.entries[:12]:
-            if entry.link in seen: continue
+        for entry in feed.entries:
+            try:
+                pub_date = datetime(*entry.published_parsed[:6])
+                # Outlook Improvement: Strict date filter to prevent articles from 2023
+                if pub_date < date_limit: continue
+            except: continue
             
+            if entry.link in seen: continue
             content, image = fetch_full_article_content(entry.link)
             kw, group = contains_keywords(content, entry.title)
             
             if kw:
                 summary, sentiment = generate_gpt_summary(entry.title, content)
-                article_info = {
-                    "headline": entry.title, "summary": summary, "link": entry.link,
-                    "sentiment": sentiment, "image": image, "matched_keyword": kw,
-                    "keyword_group": group, "published_date": datetime.now()
-                }
-                all_data.append(article_info)
+                all_data.append({"headline": entry.title, "summary": summary, "link": entry.link, "sentiment": sentiment, "image": image, "keyword_group": group, "date": pub_date})
                 seen.add(entry.link)
-                log_to_google_sheets(datetime.now().strftime('%Y-%m-%d'), entry.title, summary, kw, group, entry.link)
+                try: sheet.append_row([pub_date.strftime('%Y-%m-%d'), entry.title, summary, kw, group, entry.link])
+                except: pass
         
-        # Source Improvement: Jitter to avoid bot flags
         time.sleep(random.uniform(5, 10))
 
     send_email(all_data)
-
