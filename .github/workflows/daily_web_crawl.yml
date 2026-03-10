@@ -57,3 +57,12 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           # Note: The script loads creds.env, but we are providing secrets directly as env vars.
           # If creds.env contains other necessary variables, add them as secrets and env vars here.
+          
+      - name: Keep-alive (Prevent 60-day inactivity pause)
+        run: |
+          date > heartbeat.txt
+          git config --global user.name "MTFA Media Bot"
+          git config --global user.email "ath@mtfa.org"
+          git add heartbeat.txt
+          git commit -m "Heartbeat: Keep-alive workflow" || echo "No changes to commit"
+          git push 
