@@ -209,7 +209,7 @@ def send_email(matched_articles_data):
     sender = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
     pw = os.getenv("EMAIL_PASSWORD")
     to = ["abdulqader@mtfa.org"]
-    cc = ["officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org", "juliyah@mtfa.org", "nishani@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "nasrullah@mtfa.org", "muzdalifah@mtfa.org", "sheikh.anwarul@mtfa.org", "shafawati@mtfa.org", "mani@mtfa.org"]
+    cc = ["officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org", "juliyah@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "muzdalifah@mtfa.org", "shafawati@mtfa.org"]
     
     msg = MIMEMultipart('related')
     msg['Subject'] = f"MTFA Intelligence Brief: {today}"
@@ -268,3 +268,4 @@ if __name__ == "__main__":
         time.sleep(random.uniform(5, 10))
 
     send_email(all_data)
+
