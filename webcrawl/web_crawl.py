@@ -24,13 +24,11 @@ logging.basicConfig(filename="rss_feed.log", level=logging.INFO,
 
 # --- Gemini API Configuration ---
 apiKey = os.getenv("GEMINI_API_KEY", "")
-# Changed to the stable, public model available to all API keys
 GEMINI_MODEL = "gemini-1.5-flash" 
 
 def call_gemini_api(prompt):
     """
-    Calls Gemini API with exponential backoff.
-    Retries up to 5 times with delays of 1s, 2s, 4s, 8s, 16s.
+    Calls Gemini API with exponential backoff and robust error handling.
     """
     if not apiKey:
         print("ERROR: GEMINI_API_KEY is missing from environment variables.")
@@ -39,7 +37,6 @@ def call_gemini_api(prompt):
     url = f"/v1beta/models/{GEMINI_MODEL}:generateContent?key={apiKey}"
     host = "generativelanguage.googleapis.com"
     
-    # ADDED: Explicitly lower safety thresholds so social sector/charity news doesn't get blocked
     payload = {
         "contents": [{
             "parts": [{
@@ -47,22 +44,10 @@ def call_gemini_api(prompt):
             }]
         }],
         "safetySettings": [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE"
-            }
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
         ]
     }
     
@@ -80,17 +65,24 @@ def call_gemini_api(prompt):
             
             if response.status == 200:
                 result = json.loads(data)
-                
-                # ADDED: Better handling of blocked content to diagnose future issues
                 try:
-                    candidate = result.get('candidates', [{}])[0]
-                    if candidate.get('finishReason') == 'SAFETY':
-                        print("WARNING: Gemini blocked the summary due to safety filters.")
-                        return "Summary blocked by Gemini safety filters."
+                    candidates = result.get('candidates', [])
+                    if candidates:
+                        candidate = candidates[0]
+                        if candidate.get('finishReason') == 'SAFETY':
+                            return "Summary blocked by Gemini safety filters."
                         
-                    return candidate.get('content', {}).get('parts', [{}])[0].get('text', "")
-                except IndexError:
-                    print(f"ERROR: Unexpected API response format: {result}")
+                        parts = candidate.get('content', {}).get('parts', [])
+                        if parts:
+                            return parts[0].get('text', "")
+                        else:
+                            print(f"ERROR: Missing parts in Gemini response: {result}")
+                            return None
+                    else:
+                        print(f"ERROR: No candidates returned: {result}")
+                        return None
+                except Exception as parse_e:
+                    print(f"ERROR: Failed to parse Gemini response: {parse_e}")
                     return None
             
             # Retry on rate limits or server errors
@@ -193,22 +185,37 @@ def highlight_keywords(summary, keywords_to_highlight):
     return processed_summary
 
 def generate_summary(headline, article_content):
-    prompt = f"""Summarize this Singaporean news article in under 90 words. 
-    Focus on specific details of mentioned campaigns, events, or initiatives.
-    
-    At the end of your summary, provide a sentiment tag: [POSITIVE], [NEUTRAL], or [NEGATIVE].
+    # Ensure there is enough content to actually summarize
+    if not article_content or len(article_content.strip()) < 30:
+        return "Summary unavailable (content snippet too short).", "NEUTRAL"
 
-    Title: {headline}
-    Content: {article_content[:3500]}"""
+    prompt = f"""You are a media intelligence analyst for a non-profit organization.
+    Analyze the following article. Summarize its key points in under 90 words, focusing on the specific details of any mentioned campaign, event, or initiative.
+    Avoid generic statements. Describe the campaign or initiative itself.
+    
+    Article Title: {headline}
+    Article Content: {article_content[:3500]}
+    
+    Provide your response in this format:
+    [Your summary here]
+    
+    TAG: [POSITIVE], [NEUTRAL], or [NEGATIVE]"""
     
     output = call_gemini_api(prompt)
+    
+    # Fallback Mechanism: If Gemini completely fails, show the raw text snippet
     if not output:
-        return "Summary failed.", "NEUTRAL"
+        safe_snippet = article_content[:180].replace('\n', ' ').strip() + "..."
+        return f"Summary generation failed. Preview: {safe_snippet}", "NEUTRAL"
         
     sentiment = "NEUTRAL"
-    if "[POSITIVE]" in output: sentiment = "POSITIVE"
-    elif "[NEGATIVE]" in output: sentiment = "NEGATIVE"
-    clean_summary = re.sub(r'\[.*?\]', '', output).strip()
+    if "TAG: [POSITIVE]" in output.upper() or "[POSITIVE]" in output.upper(): sentiment = "POSITIVE"
+    elif "TAG: [NEGATIVE]" in output.upper() or "[NEGATIVE]" in output.upper(): sentiment = "NEGATIVE"
+    
+    # Clean the output to remove the tag instructions
+    clean_summary = re.sub(r'TAG:\s*\[.*?\]', '', output, flags=re.IGNORECASE)
+    clean_summary = re.sub(r'\[.*?\]', '', clean_summary).strip()
+    
     return clean_summary, sentiment
 
 def contains_keywords(text, headline):
@@ -352,11 +359,21 @@ if __name__ == "__main__":
             except: continue
             
             if entry.link in seen: continue
-            content, image = fetch_full_article_content(entry.link)
-            kw, group = contains_keywords(content, entry.title)
+            
+            # --- RSS Fallback Mechanism ---
+            fetched_content, image = fetch_full_article_content(entry.link)
+            
+            # Get the summary provided directly by the RSS feed and strip HTML tags
+            rss_summary_raw = getattr(entry, 'summary', '')
+            clean_rss_summary = re.sub(r'<[^>]+>', '', rss_summary_raw)
+            
+            # Use whichever is longer: scraped content or RSS preview text
+            final_content = fetched_content if len(fetched_content.strip()) > len(clean_rss_summary.strip()) else clean_rss_summary
+            
+            kw, group = contains_keywords(final_content, entry.title)
             
             if kw:
-                summary, sentiment = generate_summary(entry.title, content)
+                summary, sentiment = generate_summary(entry.title, final_content)
                 all_data.append({"headline": entry.title, "summary": summary, "link": entry.link, "sentiment": sentiment, "image": image, "keyword_group": group, "date": pub_date})
                 seen.add(entry.link)
                 try: sheet.append_row([pub_date.strftime('%Y-%m-%d'), entry.title, summary, kw, group, entry.link])
