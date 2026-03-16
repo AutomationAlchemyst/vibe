@@ -1,45 +1,63 @@
-name: Daily Web Crawlon:schedule:# Runs at 00:00 UTC, which is 8:00 AM SGT (Singapore Time)- cron: '0 0 * * *'workflow_dispatch: # Allows manual triggering from the Actions tabjobs:run-web-crawl:runs-on: ubuntu-latestpermissions:contents: write # Required for the keep-alive step to push heartbeat.txtsteps:- name: Check out repository codeuses: actions/checkout@v4  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.10'
+name: Daily Web Crawl
 
-  - name: Install dependencies
-    run: |
-      python -m pip install --upgrade pip
-      pip install feedparser python-dotenv gspread google-auth newspaper3k lxml_html_clean
+on:
+  schedule:
+    # Runs at 00:00 UTC, which is 8:00 AM SGT (Singapore Time)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows manual triggering from the Actions tab
 
-  - name: Create Google Credentials file (using Python)
-    env:
-      GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDENTIALS }}
-    shell: python
-    run: |
-      import os
-      import sys
-      creds_json = os.environ.get('GOOGLE_CREDS_JSON')
-      if not creds_json:
-          print("Error: GOOGLE_CREDENTIALS secret not found.", file=sys.stderr)
-          sys.exit(1)
-      try:
-          with open("credentials2.json", "w", encoding="utf-8") as f:
-              f.write(creds_json)
-          print("Successfully wrote credentials2.json using Python")
-      except Exception as e:
-          print(f"Error writing credentials2.json using Python: {e}", file=sys.stderr)
-          sys.exit(1)
-  
-  - name: Run the web crawl script
-    run: python webcrawl/web_crawl.py
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      SHEET_ID: ${{ secrets.SHEET_ID }}
-      SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+jobs:
+  run-web-crawl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for the keep-alive step to push heartbeat.txt
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser python-dotenv gspread google-auth newspaper3k lxml_html_clean
+
+      - name: Create Google Credentials file (using Python)
+        env:
+          GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDENTIALS }}
+        shell: python
+        run: |
+          import os
+          import sys
+          creds_json = os.environ.get('GOOGLE_CREDS_JSON')
+          if not creds_json:
+              print("Error: GOOGLE_CREDENTIALS secret not found.", file=sys.stderr)
+              sys.exit(1)
+          try:
+              with open("credentials2.json", "w", encoding="utf-8") as f:
+                  f.write(creds_json)
+              print("Successfully wrote credentials2.json using Python")
+          except Exception as e:
+              print(f"Error writing credentials2.json using Python: {e}", file=sys.stderr)
+              sys.exit(1)
       
-  - name: Keep-alive (Prevent 60-day inactivity pause)
-    run: |
-      date > heartbeat.txt
-      git config --global user.name "MTFA Media Bot"
-      git config --global user.email "ath@mtfa.org"
-      git add heartbeat.txt
-      git commit -m "Heartbeat: Keep-alive workflow" || echo "No changes to commit"
-      git push
+      - name: Run the web crawl script
+        run: python webcrawl/web_crawl.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          
+      - name: Keep-alive (Prevent 60-day inactivity pause)
+        run: |
+          date > heartbeat.txt
+          git config --global user.name "MTFA Media Bot"
+          git config --global user.email "ath@mtfa.org"
+          git add heartbeat.txt
+          git commit -m "Heartbeat: Keep-alive workflow" || echo "No changes to commit"
+          git push
+```
