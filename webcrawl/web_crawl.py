@@ -190,8 +190,9 @@ def generate_summary(headline, article_content):
         return "Summary unavailable (content snippet too short).", "NEUTRAL"
 
     prompt = f"""You are a media intelligence analyst for a non-profit organization.
-    Analyze the following article. Summarize its key points in under 90 words, focusing on the specific details of any mentioned campaign, event, or initiative.
-    Avoid generic statements. Describe the campaign or initiative itself.
+    Analyze the following article text (which may contain a short preview snippet). 
+    Summarize its key points in under 90 words. Focus on the specific details of any mentioned campaign, event, or initiative.
+    If the text is very short, just rewrite it clearly into a complete sentence. Ignore any lingering newsletter or subscription ads.
     
     Article Title: {headline}
     Article Content: {article_content[:3500]}
@@ -203,10 +204,11 @@ def generate_summary(headline, article_content):
     
     output = call_gemini_api(prompt)
     
-    # Fallback Mechanism: If Gemini completely fails, show the raw text snippet
-    if not output:
-        safe_snippet = article_content[:180].replace('\n', ' ').strip() + "..."
-        return f"Summary generation failed. Preview: {safe_snippet}", "NEUTRAL"
+    # Fallback Mechanism: If Gemini completely fails, show the raw text snippet cleanly
+    if not output or len(output.strip()) < 10:
+        safe_snippet = article_content[:200].replace('\n', ' ').strip()
+        if len(article_content) > 200: safe_snippet += "..."
+        return f"{safe_snippet}", "NEUTRAL"
         
     sentiment = "NEUTRAL"
     if "TAG: [POSITIVE]" in output.upper() or "[POSITIVE]" in output.upper(): sentiment = "POSITIVE"
@@ -363,12 +365,19 @@ if __name__ == "__main__":
             # --- RSS Fallback Mechanism ---
             fetched_content, image = fetch_full_article_content(entry.link)
             
+            # Remove ST's annoying newsletter prompt that confuses the AI
+            junk_phrase = "Sign up now: Get ST's newsletters delivered to your inbox"
+            fetched_content = re.compile(re.escape(junk_phrase), re.IGNORECASE).sub("", fetched_content).strip()
+            
             # Get the summary provided directly by the RSS feed and strip HTML tags
             rss_summary_raw = getattr(entry, 'summary', '')
-            clean_rss_summary = re.sub(r'<[^>]+>', '', rss_summary_raw)
+            clean_rss_summary = re.sub(r'<[^>]+>', '', rss_summary_raw).strip()
             
-            # Use whichever is longer: scraped content or RSS preview text
-            final_content = fetched_content if len(fetched_content.strip()) > len(clean_rss_summary.strip()) else clean_rss_summary
+            # Combine them so Gemini has maximum context 
+            if len(fetched_content) > 100:
+                final_content = f"RSS Snippet: {clean_rss_summary}\n\nFull Text: {fetched_content}"
+            else:
+                final_content = clean_rss_summary if len(clean_rss_summary) > len(fetched_content) else fetched_content
             
             kw, group = contains_keywords(final_content, entry.title)
             
