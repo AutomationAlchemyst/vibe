@@ -7,11 +7,13 @@ import logging
 import time
 import re
 import unicodedata
+import json
+import http.client
+import urllib.parse
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
-from openai import OpenAI
 from newspaper import Article, Config
 import gspread
 from google.oauth2.service_account import Credentials
@@ -20,14 +22,63 @@ from google.oauth2.service_account import Credentials
 logging.basicConfig(filename="rss_feed.log", level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Load OpenAI API key
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    logging.error("OPENAI_API_KEY environment variable not set.")
-    print("ERROR: OPENAI_API_KEY environment variable not set.")
-    client = None
-else:
-    client = OpenAI(api_key=openai_api_key)
+# --- Gemini API Configuration ---
+# Set to empty string for the environment; it will be overridden by the secret in GitHub Actions
+apiKey = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"
+
+def call_gemini_api(prompt):
+    """
+    Calls Gemini API with exponential backoff.
+    Retries up to 5 times with delays of 1s, 2s, 4s, 8s, 16s.
+    """
+    if not apiKey:
+        logging.error("GEMINI_API_KEY not found in environment.")
+        return None
+
+    url = f"/v1beta/models/{GEMINI_MODEL}:generateContent?key={apiKey}"
+    host = "generativelanguage.googleapis.com"
+    
+    payload = {
+        "contents": [{
+            "parts": [{
+                "text": prompt
+            }]
+        }]
+    }
+    
+    retries = 0
+    delays = [1, 2, 4, 8, 16]
+    
+    while retries <= 5:
+        try:
+            conn = http.client.HTTPSConnection(host)
+            headers = {"Content-Type": "application/json"}
+            conn.request("POST", url, body=json.dumps(payload), headers=headers)
+            response = conn.getresponse()
+            data = response.read().decode()
+            conn.close()
+            
+            if response.status == 200:
+                result = json.loads(data)
+                return result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', "")
+            
+            # Retry on rate limits or server errors
+            if response.status in [429, 500, 502, 503, 504] and retries < 5:
+                time.sleep(delays[retries])
+                retries += 1
+            else:
+                logging.error(f"Gemini API Error {response.status}: {data}")
+                break
+        except Exception as e:
+            if retries < 5:
+                time.sleep(delays[retries])
+                retries += 1
+            else:
+                logging.error(f"Gemini API final failure: {e}")
+                break
+                
+    return None
 
 # Setup Google Sheets API
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -68,7 +119,6 @@ keyword_groups = {
     "General_CharitySector": ["charity", "charities", "non-profit", "non profit", "NPO", "philanthropy", "philanthropic", "social impact", "community initiative", "foundation grant", "NVPC", "NCSS", "ComChest", "Temasek Trust", "Tote Board"],
 }
 
-# --- NEW: Specific Exclusion Keywords to prevent environmental/unrelated hits ---
 EXCLUSION_KEYWORDS = [
     "coral", "marine life", "power plant", "hydrogen-compatible", "natural gas", 
     "discharge point", "underwater", "environmental study", "PacificLight", 
@@ -113,31 +163,24 @@ def highlight_keywords(summary, keywords_to_highlight):
         processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='background-color:#fff1a8; font-weight:bold;'>\1</span>", processed_summary, flags=re.IGNORECASE)
     return processed_summary
 
-def generate_gpt_summary(headline, article_content):
-    if not client: return "Summary skipped (API Key Missing).", "NEUTRAL"
-    try:
-        prompt = f"""Summarize this Singaporean news article in under 90 words. 
-        Focus on specific details of mentioned campaigns, events, or initiatives.
-        
-        At the end of your summary, provide a sentiment tag: [POSITIVE], [NEUTRAL], or [NEGATIVE].
+def generate_summary(headline, article_content):
+    prompt = f"""Summarize this Singaporean news article in under 90 words. 
+    Focus on specific details of mentioned campaigns, events, or initiatives.
+    
+    At the end of your summary, provide a sentiment tag: [POSITIVE], [NEUTRAL], or [NEGATIVE].
 
-        Title: {headline}
-        Content: {article_content[:3500]}"""
-        
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200,
-            temperature=0.4
-        )
-        output = response.choices[0].message.content.strip()
-        sentiment = "NEUTRAL"
-        if "[POSITIVE]" in output: sentiment = "POSITIVE"
-        elif "[NEGATIVE]" in output: sentiment = "NEGATIVE"
-        clean_summary = re.sub(r'\[.*?\]', '', output).strip()
-        return clean_summary, sentiment
-    except:
+    Title: {headline}
+    Content: {article_content[:3500]}"""
+    
+    output = call_gemini_api(prompt)
+    if not output:
         return "Summary failed.", "NEUTRAL"
+        
+    sentiment = "NEUTRAL"
+    if "[POSITIVE]" in output: sentiment = "POSITIVE"
+    elif "[NEGATIVE]" in output: sentiment = "NEGATIVE"
+    clean_summary = re.sub(r'\[.*?\]', '', output).strip()
+    return clean_summary, sentiment
 
 def contains_keywords(text, headline):
     score, best_kw, best_group = 0, None, None
@@ -145,7 +188,6 @@ def contains_keywords(text, headline):
     h_lower, t_lower = headline.lower(), text.lower()
     full_text_lower = f"{h_lower} {t_lower}"
 
-    # Global Exclusion: If environmental or political noise is found, discard immediately
     if any(re.search(rf"\b{re.escape(ex)}\b", full_text_lower) for ex in EXCLUSION_KEYWORDS):
         return None, None
 
@@ -159,7 +201,6 @@ def contains_keywords(text, headline):
             if current_score > 0:
                 is_political = any(re.search(rf"\b{re.escape(pk.lower())}\b", full_text_lower, re.IGNORECASE) for pk in POLITICAL_EXCLUSION_KEYWORDS)
                 if not is_political:
-                    # Logic update: Weight MTFA groups higher than general ones
                     is_mtfa_group = "MTFA" in group or "Ihsan" in group or "Darul" in group
                     score += (current_score * 3) if is_mtfa_group else current_score
                     
@@ -167,7 +208,6 @@ def contains_keywords(text, headline):
                         best_match_score = current_score
                         best_kw, best_group = kw, group
 
-    # Strict threshold: If it's just a "General" keyword, we need a higher score to trust it
     final_threshold = 3 if ("MTFA" in str(best_group) or "Ihsan" in str(best_group)) else 6
     return (best_kw, best_group) if score >= final_threshold and best_kw else (None, None)
 
@@ -253,24 +293,15 @@ def send_email(matched_articles_data):
 # --- Execution ---
 if __name__ == "__main__":
     rss_feeds = [
-        # --- Major News Outlets ---
         "https://www.straitstimes.com/news/singapore/rss.xml",
         "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416",
         "https://www.todayonline.com/feed",
         "https://www.asiaone.com/rss/latest.xml",
-        
-        # --- Malay Language News ---
         "https://news.google.com/rss/search?q=site:beritaharian.sg",
-        
-        # --- Philanthropy & Social Sector Focused ---
         "https://news.google.com/rss/search?q=site:businesstimes.com.sg+charity+OR+non-profit+OR+philanthropy",
-        
-        # --- Relevant Statutory Bodies & MTFA Searches ---
         "https://news.google.com/rss/search?q=site:muis.gov.sg",
         "https://news.google.com/rss/search?q=site:msf.gov.sg+OR+%22Ministry+of+Social+and+Family+Development%22",
         "https://news.google.com/rss?q=Muslimin+Trust+Fund+Association+Singapore",
-        
-        # --- Competitor Monitoring ---
         "https://news.google.com/rss/search?q=%22National+Kidney+Foundation%22+NKF+Singapore",
         "https://news.google.com/rss/search?q=%22Kidney+Dialysis+Foundation%22+KDF+Singapore",
         "https://news.google.com/rss/search?q=%22Rahmatan+Lil+Alamin+Foundation%22+RLAF",
@@ -293,7 +324,7 @@ if __name__ == "__main__":
             kw, group = contains_keywords(content, entry.title)
             
             if kw:
-                summary, sentiment = generate_gpt_summary(entry.title, content)
+                summary, sentiment = generate_summary(entry.title, content)
                 all_data.append({"headline": entry.title, "summary": summary, "link": entry.link, "sentiment": sentiment, "image": image, "keyword_group": group, "date": pub_date})
                 seen.add(entry.link)
                 try: sheet.append_row([pub_date.strftime('%Y-%m-%d'), entry.title, summary, kw, group, entry.link])
@@ -302,4 +333,3 @@ if __name__ == "__main__":
         time.sleep(random.uniform(5, 10))
 
     send_email(all_data)
-
