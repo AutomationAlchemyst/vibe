@@ -23,9 +23,9 @@ logging.basicConfig(filename="rss_feed.log", level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
 # --- Gemini API Configuration ---
-# Set to empty string for the environment; it will be overridden by the secret in GitHub Actions
 apiKey = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"
+# Changed to the stable, public model available to all API keys
+GEMINI_MODEL = "gemini-1.5-flash" 
 
 def call_gemini_api(prompt):
     """
@@ -33,7 +33,7 @@ def call_gemini_api(prompt):
     Retries up to 5 times with delays of 1s, 2s, 4s, 8s, 16s.
     """
     if not apiKey:
-        logging.error("GEMINI_API_KEY not found in environment.")
+        print("ERROR: GEMINI_API_KEY is missing from environment variables.")
         return None
 
     url = f"/v1beta/models/{GEMINI_MODEL}:generateContent?key={apiKey}"
@@ -68,14 +68,14 @@ def call_gemini_api(prompt):
                 time.sleep(delays[retries])
                 retries += 1
             else:
-                logging.error(f"Gemini API Error {response.status}: {data}")
+                print(f"ERROR: Gemini API Failed with status {response.status}. Response: {data}")
                 break
         except Exception as e:
             if retries < 5:
                 time.sleep(delays[retries])
                 retries += 1
             else:
-                logging.error(f"Gemini API final failure: {e}")
+                print(f"ERROR: Gemini API final connection failure: {e}")
                 break
                 
     return None
@@ -87,10 +87,8 @@ try:
     creds = Credentials.from_service_account_file("credentials2.json", scopes=SCOPES)
     gs_client = gspread.authorize(creds)
     sheet = gs_client.open_by_key(SHEET_ID).sheet1
-    logging.info("Google Sheets API authorized successfully.")
     print("INFO: Google Sheets API authorized successfully.")
 except Exception as e:
-    logging.error(f"Failed to authorize Google Sheets API: {e}")
     print(f"ERROR: Failed to authorize Google Sheets API: {e}")
     raise e
 
