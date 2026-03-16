@@ -333,10 +333,20 @@ def send_email(matched_articles_data):
                 <h1 style="color:{brand_green}; margin:0; font-size:24px;">Daily Media Intelligence</h1>
                 <p class="text-muted" style="color:#888; font-size:14px;">{today} | Prepared by Office of the CEO</p>
             </div>
-            <div style="background:{brand_green}; padding:15px; display:flex; justify-content:space-around; text-align:center; color:white;">
-                <div><div style="font-size:22px; font-weight:bold;">{total_count}</div><div style="font-size:10px; opacity:0.8;">NEWS HITS</div></div>
-                <div><div style="font-size:22px; font-weight:bold;">{mtfa_hits}</div><div style="font-size:10px; opacity:0.8;">MTFA MENTIONS</div></div>
-            </div>
+            
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{brand_green}; color:white; text-align:center;">
+                <tr>
+                    <td width="50%" style="padding:15px 0; border-right:1px solid rgba(255,255,255,0.2);">
+                        <div style="font-size:24px; font-weight:bold;">{total_count}</div>
+                        <div style="font-size:11px; opacity:0.9; letter-spacing:1px;">NEWS HITS</div>
+                    </td>
+                    <td width="50%" style="padding:15px 0;">
+                        <div style="font-size:24px; font-weight:bold;">{mtfa_hits}</div>
+                        <div style="font-size:11px; opacity:0.9; letter-spacing:1px;">MTFA MENTIONS</div>
+                    </td>
+                </tr>
+            </table>
+
             <div style="padding:30px;">
                 {quiz_html} 
                 {content_html if matched_articles_data else "<p class='text-muted' style='text-align:center; color:#999; padding-top:20px;'>No relevant news found for today.</p>"}
@@ -359,7 +369,7 @@ def send_email(matched_articles_data):
     
     # Dynamic Subject Line
     subject_alert = " (🚨 MTFA Mentioned)" if mtfa_hits > 0 else ""
-    msg['Subject'] = f"MTFA Intelligence Brief: {today}{subject_alert}"
+    msg['Subject'] = f"MTFA News Brief: {today}{subject_alert}"
     
     msg['From'] = f"MTFA Media Bot <{sender}>"
     msg['To'] = ", ".join(to)
