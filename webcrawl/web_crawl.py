@@ -39,12 +39,31 @@ def call_gemini_api(prompt):
     url = f"/v1beta/models/{GEMINI_MODEL}:generateContent?key={apiKey}"
     host = "generativelanguage.googleapis.com"
     
+    # ADDED: Explicitly lower safety thresholds so social sector/charity news doesn't get blocked
     payload = {
         "contents": [{
             "parts": [{
                 "text": prompt
             }]
-        }]
+        }],
+        "safetySettings": [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+            }
+        ]
     }
     
     retries = 0
@@ -61,7 +80,18 @@ def call_gemini_api(prompt):
             
             if response.status == 200:
                 result = json.loads(data)
-                return result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', "")
+                
+                # ADDED: Better handling of blocked content to diagnose future issues
+                try:
+                    candidate = result.get('candidates', [{}])[0]
+                    if candidate.get('finishReason') == 'SAFETY':
+                        print("WARNING: Gemini blocked the summary due to safety filters.")
+                        return "Summary blocked by Gemini safety filters."
+                        
+                    return candidate.get('content', {}).get('parts', [{}])[0].get('text', "")
+                except IndexError:
+                    print(f"ERROR: Unexpected API response format: {result}")
+                    return None
             
             # Retry on rate limits or server errors
             if response.status in [429, 500, 502, 503, 504] and retries < 5:
@@ -95,7 +125,7 @@ except Exception as e:
 # --- Keyword Definitions ---
 keyword_groups = {
     "MTFA_Main": ["MTFA", "Muslimin Trust Fund Association", "MTFA Singapore"],
-    "Darul_Ihsan_Orphanage": ["Darul Ihsan Orphanage", "MTFA Darul Ihsan", "Darul Ihsan Boys", "Darul Ihsan Girls", "rumah anak yatim", "orphanage", "displaced children", "vulnerable youths", "5 Mattar Road", "23 Wan Tho Ave"],
+    "Darul_Ihsan_Orphanage": ["Darul Ihsan Orphanage", "MTFA Darul Ihsan", "Darul Ihsan Boys", "Darul Ihsan Girls", "5 Mattar Road", "23 Wan Tho Ave"],
     "Ihsan_Casket": ["Ihsan Casket", "MTFA Ihsan Casket", "burial service", "funeral service", "Muslim funeral", "Islamic funeral", "jenazah", "pengurusan jenazah", "placenta burial", "free burial", "unclaimed bodies", "ghusl", "funeral management course", "info@ihsancasket.com"],
     "Ihsan_Kidney_Care": ["Ihsan Kidney Care", "IKC", "MTFA Ihsan Kidney Care", "MTFA dialysis", "dialysis centre", "pusat dialisis", "kidney treatment", "rawatan ginjal", "buah pinggang", "subsidised dialysis", "Norris Rd dialysis"],
     "MTFA_Financial_Aid": ["Ihsan Aid", "MTFA financial assistance", "MTFA welfare aid", "MTFA needy families", "MTFA low-income support", "MTFA underprivileged support", "welfareaid@mtfa.org", "MTFA zakat", "MTFA fidyah"],
@@ -111,7 +141,7 @@ keyword_groups = {
     "Competitor_FreeTuition": ["Children's Wishing Well", "YYD Education Centre", "AMP tuition", "Tzu Chi Seeds of Hope"],
     "Competitor_Childcare": ["MY World Preschool", "Metropolitan YMCA childcare", "Canossaville Children and Community Services"],
     "SocialSector_Advocacy_Support": ["Humanitarian Organisation for Migration Economics", "H.O.M.E.", "TWC2", "Transient Workers Count Too", "migrant worker support", "foreign worker rights", "domestic worker aid", "migrant workers"],
-    "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable"],
+    "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable", "orphanage", "rumah anak yatim", "displaced children", "vulnerable youths"],
     "General_Donations": ["donation", "derma", "sumbangan", "infaq", "wakaf", "infak", "fundraising", "pengumpulan dana", "donate", "menyumbang"],
     "General_Zakat": ["zakat", "derma zakat", "bayar zakat"],
     "General_CharitySector": ["charity", "charities", "non-profit", "non profit", "NPO", "philanthropy", "philanthropic", "social impact", "community initiative", "foundation grant", "NVPC", "NCSS", "ComChest", "Temasek Trust", "Tote Board"],
@@ -120,7 +150,8 @@ keyword_groups = {
 EXCLUSION_KEYWORDS = [
     "coral", "marine life", "power plant", "hydrogen-compatible", "natural gas", 
     "discharge point", "underwater", "environmental study", "PacificLight", 
-    "bleaching", "political donation", "election", "candidate", "ge2025"
+    "bleaching", "political donation", "election", "candidate", "ge2025",
+    "Ramakrishna"
 ]
 
 POLITICAL_EXCLUSION_KEYWORDS = ["political donation", "election", "candidate", "eld", "ge2025", "parliamentary seat", "general election", "nomination paper", "political party", "campaign fund", "election department", "minister", "ministers", "MP", "Member of Parliament", "MPs", "politician", "politicians", "government official", "government officials", "allegation", "allegations", "defamation", "libel", "lawsuit against politician"]
