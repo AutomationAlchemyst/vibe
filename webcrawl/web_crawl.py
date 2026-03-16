@@ -229,7 +229,7 @@ def send_email(matched_articles_data):
     sender = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
     pw = os.getenv("EMAIL_PASSWORD")
     to = ["ath@mtfa.org"]
-    cc = ["officeofed@mtfa.org"]
+    cc = ["#officeofed@mtfa.org"]
     
     msg = MIMEMultipart('related')
     msg['Subject'] = f"MTFA Intelligence Brief: {today}"
