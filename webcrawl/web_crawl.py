@@ -140,6 +140,7 @@ keyword_groups = {
     "Competitor_IslamicBurial": ["Singapore Muslim Casket", "Persatuan Khairat Kematian Singapura", "Takdir Pengurusan Jenazah", "Pengurusan Jenazah Sinaran Baharu"],
     "Competitor_FreeTuition": ["Children's Wishing Well", "YYD Education Centre", "AMP tuition", "Tzu Chi Seeds of Hope"],
     "Competitor_Childcare": ["MY World Preschool", "Metropolitan YMCA childcare", "Canossaville Children and Community Services"],
+    "Competitor_Other": ["Ramakrishna Mission", "Jamiyah", "Muhammadiyah", "Pergas"],
     "SocialSector_Advocacy_Support": ["Humanitarian Organisation for Migration Economics", "H.O.M.E.", "TWC2", "Transient Workers Count Too", "migrant worker support", "foreign worker rights", "domestic worker aid", "migrant workers"],
     "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable", "orphanage", "rumah anak yatim", "displaced children", "vulnerable youths"],
     "General_Donations": ["donation", "derma", "sumbangan", "infaq", "wakaf", "infak", "fundraising", "pengumpulan dana", "donate", "menyumbang"],
@@ -150,8 +151,7 @@ keyword_groups = {
 EXCLUSION_KEYWORDS = [
     "coral", "marine life", "power plant", "hydrogen-compatible", "natural gas", 
     "discharge point", "underwater", "environmental study", "PacificLight", 
-    "bleaching", "political donation", "election", "candidate", "ge2025",
-    "Ramakrishna"
+    "bleaching", "political donation", "election", "candidate", "ge2025"
 ]
 
 POLITICAL_EXCLUSION_KEYWORDS = ["political donation", "election", "candidate", "eld", "ge2025", "parliamentary seat", "general election", "nomination paper", "political party", "campaign fund", "election department", "minister", "ministers", "MP", "Member of Parliament", "MPs", "politician", "politicians", "government official", "government officials", "allegation", "allegations", "defamation", "libel", "lawsuit against politician"]
@@ -237,7 +237,10 @@ def contains_keywords(text, headline):
                         best_match_score = current_score
                         best_kw, best_group = kw, group
 
-    final_threshold = 3 if ("MTFA" in str(best_group) or "Ihsan" in str(best_group)) else 6
+    # Lowered threshold for competitor news to ensure it gets picked up
+    is_core_group = best_group and any(k in str(best_group) for k in ["MTFA", "Ihsan", "Darul", "Competitor"])
+    final_threshold = 3 if is_core_group else 5
+    
     return (best_kw, best_group) if score >= final_threshold and best_kw else (None, None)
 
 def send_email(matched_articles_data):
