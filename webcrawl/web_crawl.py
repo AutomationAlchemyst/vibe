@@ -38,11 +38,7 @@ def call_gemini_api(prompt):
     host = "generativelanguage.googleapis.com"
     
     payload = {
-        "contents": [{
-            "parts": [{
-                "text": prompt
-            }]
-        }],
+        "contents": [{"parts": [{"text": prompt}]}],
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -76,28 +72,22 @@ def call_gemini_api(prompt):
                         if parts:
                             return parts[0].get('text', "")
                         else:
-                            print(f"ERROR: Missing parts in Gemini response: {result}")
                             return None
                     else:
-                        print(f"ERROR: No candidates returned: {result}")
                         return None
                 except Exception as parse_e:
-                    print(f"ERROR: Failed to parse Gemini response: {parse_e}")
                     return None
             
-            # Retry on rate limits or server errors
             if response.status in [429, 500, 502, 503, 504] and retries < 5:
                 time.sleep(delays[retries])
                 retries += 1
             else:
-                print(f"ERROR: Gemini API Failed with status {response.status}. Response: {data}")
                 break
         except Exception as e:
             if retries < 5:
                 time.sleep(delays[retries])
                 retries += 1
             else:
-                print(f"ERROR: Gemini API final connection failure: {e}")
                 break
                 
     return None
@@ -181,13 +171,13 @@ def fetch_full_article_content(article_url):
 def highlight_keywords(summary, keywords_to_highlight):
     processed_summary = summary
     for kw in sorted(keywords_to_highlight, key=len, reverse=True):
-        processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='background-color:#fff1a8; font-weight:bold;'>\1</span>", processed_summary, flags=re.IGNORECASE)
+        # Updated to subtle brand-aligned styling
+        processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='color:#006a4e; background-color:#e8f5e9; font-weight:bold; padding:0 3px; border-radius:3px;'>\1</span>", processed_summary, flags=re.IGNORECASE)
     return processed_summary
 
 def generate_summary(headline, article_content):
-    # Ensure there is enough content to actually summarize
     if not article_content or len(article_content.strip()) < 30:
-        return "Summary unavailable (content snippet too short).", "NEUTRAL"
+        return "<span style='color: #7f8c8d; font-style: italic;'>Preview unavailable (content highly restricted or blocked).</span>", "NEUTRAL"
 
     prompt = f"""You are a media intelligence analyst for a non-profit organization.
     Analyze the following article text (which may contain a short preview snippet). 
@@ -204,17 +194,16 @@ def generate_summary(headline, article_content):
     
     output = call_gemini_api(prompt)
     
-    # Fallback Mechanism: If Gemini completely fails, show the raw text snippet cleanly
+    # Styled Fallback Mechanism
     if not output or len(output.strip()) < 10:
         safe_snippet = article_content[:200].replace('\n', ' ').strip()
         if len(article_content) > 200: safe_snippet += "..."
-        return f"{safe_snippet}", "NEUTRAL"
+        return f"<span style='color: #7f8c8d; font-style: italic;'>Preview: {safe_snippet}</span>", "NEUTRAL"
         
     sentiment = "NEUTRAL"
     if "TAG: [POSITIVE]" in output.upper() or "[POSITIVE]" in output.upper(): sentiment = "POSITIVE"
     elif "TAG: [NEGATIVE]" in output.upper() or "[NEGATIVE]" in output.upper(): sentiment = "NEGATIVE"
     
-    # Clean the output to remove the tag instructions
     clean_summary = re.sub(r'TAG:\s*\[.*?\]', '', output, flags=re.IGNORECASE)
     clean_summary = re.sub(r'\[.*?\]', '', clean_summary).strip()
     
@@ -246,7 +235,6 @@ def contains_keywords(text, headline):
                         best_match_score = current_score
                         best_kw, best_group = kw, group
 
-    # Lowered threshold for competitor news to ensure it gets picked up
     is_core_group = best_group and any(k in str(best_group) for k in ["MTFA", "Ihsan", "Darul", "Competitor"])
     final_threshold = 3 if is_core_group else 5
     
@@ -256,56 +244,111 @@ def send_email(matched_articles_data):
     today = datetime.now().strftime('%A, %d %B %Y')
     brand_green = "#006a4e"
     brand_blue = "#0d47a1"
-    bg_light = "#f4f7f6"
     
     total_count = len(matched_articles_data)
-    mtfa_hits = sum(1 for a in matched_articles_data if a['keyword_group'] and ("MTFA" in a['keyword_group'] or "Ihsan" in a['keyword_group']))
+    
+    # Categorize Articles
+    mtfa_articles = []
+    competitor_articles = []
+    general_articles = []
+
+    for art in matched_articles_data:
+        group = art.get('keyword_group', '')
+        if not group: group = ""
+        
+        if any(x in group for x in ["MTFA", "Ihsan", "Darul"]):
+            mtfa_articles.append(art)
+        elif "Competitor" in group:
+            competitor_articles.append(art)
+        else:
+            general_articles.append(art)
+
+    mtfa_hits = len(mtfa_articles)
     sentiment_map = {"POSITIVE": {"bg": "#e8f5e9", "text": "#2e7d32"}, "NEGATIVE": {"bg": "#ffebee", "text": "#c62828"}, "NEUTRAL": {"bg": "#eef2f7", "text": "#455a64"}}
 
     quiz_item = random.choice(mtfa_quiz_data)
-    quiz_html = f"""<div style="background-color: #eef2f7; border: 1px solid #d0d9e2; padding: 20px; margin: 20px 0; border-radius: 12px; text-align: center;">
+    quiz_html = f"""<div class="quiz-box" style="background-color: #eef2f7; border: 1px solid #d0d9e2; padding: 20px; margin: 20px 0; border-radius: 12px; text-align: center;">
         <h3 style="color: {brand_green}; margin: 0 0 10px 0;">✨ MTFA Quick Quiz!</h3>
-        <p style="font-size: 15px;">{quiz_item['question']}</p>
-        <p style="font-size: 14px; color: #666;">{"<br>".join(quiz_item['options'])}</p>
+        <p class="text-dark" style="font-size: 15px;">{quiz_item['question']}</p>
+        <p class="text-muted" style="font-size: 14px; color: #666;">{"<br>".join(quiz_item['options'])}</p>
     </div>"""
 
-    content_html = ""
-    for art in matched_articles_data:
-        s_style = sentiment_map.get(art['sentiment'], sentiment_map["NEUTRAL"])
-        highlighted = highlight_keywords(art['summary'], keywords)
-        img_html = f'<img src="{art["image"]}" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px 8px 0 0;">' if art["image"] else ""
-        content_html += f"""
-        <div style="background:white; border:1px solid #ddd; border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-            {img_html}
-            <div style="padding:20px;">
-                <span style="background:{s_style['bg']}; color:{s_style['text']}; padding:3px 10px; border-radius:15px; font-size:11px; font-weight:bold;">{art['sentiment']}</span>
-                <h3 style="margin:10px 0; color:#333; font-size:18px;">{art['headline']}</h3>
-                <p style="font-size:14px; line-height:1.6; color:#444;">{highlighted}</p>
-                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#888;">
-                    <a href="{art['link']}" style="color:{brand_blue}; font-weight:bold; text-decoration:none;">Read Full Article →</a>
-                    <span>{art['keyword_group']} | {art['date'].strftime('%d %b')}</span>
+    def build_article_list_html(articles, section_title):
+        if not articles: return ""
+        html = f"<h2 class='text-dark' style='color:{brand_green}; font-size:18px; margin-top:30px; margin-bottom:15px; border-bottom:2px solid {brand_green}; padding-bottom:5px;'>{section_title}</h2>"
+        for art in articles:
+            s_style = sentiment_map.get(art['sentiment'], sentiment_map["NEUTRAL"])
+            highlighted = highlight_keywords(art['summary'], keywords)
+            safe_alt = art['headline'].replace('"', "'")
+            img_html = f'<img src="{art["image"]}" alt="{safe_alt}" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px 8px 0 0;">' if art["image"] else ""
+            
+            html += f"""
+            <div class="card" style="background:white; border:1px solid #ddd; border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                {img_html}
+                <div style="padding:20px;">
+                    <span style="background:{s_style['bg']}; color:{s_style['text']}; padding:3px 10px; border-radius:15px; font-size:11px; font-weight:bold;">{art['sentiment']}</span>
+                    <h3 class="text-dark" style="margin:10px 0; color:#333; font-size:18px;">{art['headline']}</h3>
+                    <p class="text-dark" style="font-size:14px; line-height:1.6; color:#444;">{highlighted}</p>
+                    <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#888;">
+                        <a href="{art['link']}" style="color:{brand_blue}; font-weight:bold; text-decoration:none;">Read Full Article →</a>
+                        <span class="text-muted">{art['keyword_group']} | {art['date'].strftime('%d %b')}</span>
+                    </div>
                 </div>
-            </div>
-        </div>"""
+            </div>"""
+        return html
 
-    email_body = f"""<html><body style="background-color:{bg_light}; padding:20px; font-family: 'Segoe UI', Arial, sans-serif;">
-        <div style="max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; border-top:8px solid {brand_green}; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
+    content_html = ""
+    content_html += build_article_list_html(mtfa_articles, "🚨 MTFA & Subsidiaries")
+    content_html += build_article_list_html(competitor_articles, "📊 Peer & Competitor News")
+    content_html += build_article_list_html(general_articles, "🌐 General Social Sector")
+
+    feedback_html = """
+    <div style="text-align:center; margin-top:30px; padding-top:20px; border-top:1px solid #eee;">
+        <p class="text-muted" style="font-size:14px; color:#555; margin-bottom:10px;">Was this brief helpful?</p>
+        <a href="mailto:ath@mtfa.org?subject=Briefing%20Feedback:%20Yes&body=This%20brief%20was%20helpful!" style="display:inline-block; padding:8px 15px; margin:0 5px; background-color:#e8f5e9; color:#2e7d32; text-decoration:none; border-radius:20px; font-weight:bold; font-size:13px;">👍 Yes</a>
+        <a href="mailto:ath@mtfa.org?subject=Briefing%20Feedback:%20No&body=This%20brief%20could%20be%20improved%20by..." style="display:inline-block; padding:8px 15px; margin:0 5px; background-color:#ffebee; color:#c62828; text-decoration:none; border-radius:20px; font-weight:bold; font-size:13px;">👎 No</a>
+    </div>
+    """
+
+    email_body = f"""<!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            :root {{ color-scheme: light dark; supported-color-schemes: light dark; }}
+            @media (prefers-color-scheme: dark) {{
+                body, .email-bg {{ background-color: #121212 !important; }}
+                .main-container {{ background-color: #1e1e1e !important; box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important; }}
+                .card {{ background-color: #242424 !important; border-color: #333 !important; }}
+                .text-dark {{ color: #e0e0e0 !important; }}
+                .text-muted {{ color: #a0a0a0 !important; }}
+                .quiz-box {{ background-color: #1e293b !important; border-color: #334155 !important; }}
+                .footer {{ background-color: #18181b !important; border-color: #333 !important; }}
+            }}
+        </style>
+    </head>
+    <body class="email-bg" style="background-color:#f4f7f6; padding:20px; font-family: 'Segoe UI', Arial, sans-serif; margin:0;">
+        <div class="main-container" style="max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; border-top:8px solid {brand_green}; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
             <div style="padding:30px; text-align:center;">
-                <img src="cid:MTFA_logo" style="max-height:75px; margin-bottom:15px;">
+                <img src="cid:MTFA_logo" alt="MTFA Logo" style="max-height:75px; margin-bottom:15px;">
                 <h1 style="color:{brand_green}; margin:0; font-size:24px;">Daily Media Intelligence</h1>
-                <p style="color:#888; font-size:14px;">{today} | Prepared by Office of the CEO</p>
+                <p class="text-muted" style="color:#888; font-size:14px;">{today} | Prepared by Office of the CEO</p>
             </div>
             <div style="background:{brand_green}; padding:15px; display:flex; justify-content:space-around; text-align:center; color:white;">
                 <div><div style="font-size:22px; font-weight:bold;">{total_count}</div><div style="font-size:10px; opacity:0.8;">NEWS HITS</div></div>
                 <div><div style="font-size:22px; font-weight:bold;">{mtfa_hits}</div><div style="font-size:10px; opacity:0.8;">MTFA MENTIONS</div></div>
             </div>
-            <div style="padding:30px;">{quiz_html} {content_html if matched_articles_data else "<p style='text-align:center; color:#999; padding-top:20px;'>No relevant news found for today.</p>"}</div>
-            <div style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
+            <div style="padding:30px;">
+                {quiz_html} 
+                {content_html if matched_articles_data else "<p class='text-muted' style='text-align:center; color:#999; padding-top:20px;'>No relevant news found for today.</p>"}
+                {feedback_html if matched_articles_data else ""}
+            </div>
+            <div class="footer" style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
                 <strong>Quiz Answer:</strong> {quiz_item['answer']}<br><br>
                 Designed by Ath Thaariq (MSE-OCE) | <a href="https://docs.google.com/spreadsheets/d/{SHEET_ID}" style="color:{brand_blue};">View Logs</a>
             </div>
         </div>
-    </body></html>"""
+    </body>
+    </html>"""
 
     sender = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
     pw = os.getenv("EMAIL_PASSWORD")
@@ -313,7 +356,11 @@ def send_email(matched_articles_data):
     cc = ["#officeofed@mtfa.org"]
     
     msg = MIMEMultipart('related')
-    msg['Subject'] = f"MTFA Intelligence Brief: {today}"
+    
+    # Dynamic Subject Line
+    subject_alert = " (🚨 MTFA Mentioned)" if mtfa_hits > 0 else ""
+    msg['Subject'] = f"MTFA Intelligence Brief: {today}{subject_alert}"
+    
     msg['From'] = f"MTFA Media Bot <{sender}>"
     msg['To'] = ", ".join(to)
     msg['Cc'] = ", ".join(cc)
@@ -362,18 +409,14 @@ if __name__ == "__main__":
             
             if entry.link in seen: continue
             
-            # --- RSS Fallback Mechanism ---
             fetched_content, image = fetch_full_article_content(entry.link)
             
-            # Remove ST's annoying newsletter prompt that confuses the AI
             junk_phrase = "Sign up now: Get ST's newsletters delivered to your inbox"
             fetched_content = re.compile(re.escape(junk_phrase), re.IGNORECASE).sub("", fetched_content).strip()
             
-            # Get the summary provided directly by the RSS feed and strip HTML tags
             rss_summary_raw = getattr(entry, 'summary', '')
             clean_rss_summary = re.sub(r'<[^>]+>', '', rss_summary_raw).strip()
             
-            # Combine them so Gemini has maximum context 
             if len(fetched_content) > 100:
                 final_content = f"RSS Snippet: {clean_rss_summary}\n\nFull Text: {fetched_content}"
             else:
