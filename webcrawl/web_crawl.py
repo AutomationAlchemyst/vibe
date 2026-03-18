@@ -330,7 +330,7 @@ def send_email(matched_articles_data):
         <div class="main-container" style="max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; border-top:8px solid {brand_green}; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
             <div style="padding:30px; text-align:center;">
                 <img src="cid:MTFA_logo" alt="MTFA Logo" style="max-height:75px; margin-bottom:15px;">
-                <h1 style="color:{brand_green}; margin:0; font-size:24px;">Daily Media Intelligence</h1>
+                <h1 style="color:{brand_green}; margin:0; font-size:24px;">Daily News Brief</h1>
                 <p class="text-muted" style="color:#888; font-size:14px;">{today} | Prepared by Office of the CEO</p>
             </div>
             
@@ -362,8 +362,8 @@ def send_email(matched_articles_data):
 
     sender = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
     pw = os.getenv("EMAIL_PASSWORD")
-    to = ["ath@mtfa.org"]
-    cc = ["#officeofed@mtfa.org"]
+    to = ["abdulqader@mtfa.org"]
+    cc = ["officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org", "juliyah@mtfa.org", "ath@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "ikram@mtfa.org", "muzdalifah@mtfa.org", "shafawati@mtfa.org"]
     
     msg = MIMEMultipart('related')
     
