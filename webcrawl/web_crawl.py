@@ -280,7 +280,9 @@ def send_email(matched_articles_data):
             s_style = sentiment_map.get(art['sentiment'], sentiment_map["NEUTRAL"])
             highlighted = highlight_keywords(art['summary'], keywords)
             safe_alt = art['headline'].replace('"', "'")
-            img_html = f'<img src="{art["image"]}" alt="{safe_alt}" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px 8px 0 0;">' if art["image"] else ""
+            
+            # Replaced object-fit and max-height with height:auto and display:block
+            img_html = f'<img src="{art["image"]}" alt="{safe_alt}" style="width:100%; height:auto; display:block; border-radius:8px 8px 0 0;">' if art["image"] else ""
             
             html += f"""
             <div class="card" style="background:white; border:1px solid #ddd; border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
