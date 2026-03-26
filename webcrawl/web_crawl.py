@@ -140,14 +140,6 @@ POLITICAL_EXCLUSION_KEYWORDS = ["political donation", "election", "candidate", "
 
 CORE_RELEVANT_GROUPS = list(keyword_groups.keys())
 
-mtfa_quiz_data = [
-    {"question": "In which year was the Muslimin Trust Fund Association (MTFA) established?", "options": ["A) 1946", "B) 1962", "C) 1904"], "answer": "C) 1904"},
-    {"question": "What is the name of MTFA's subsidiary providing affordable Islamic burial services?", "options": ["A) Ihsan Aid", "B) Ihsan Casket", "C) Darul Ihsan"], "answer": "B) Ihsan Casket"},
-    {"question": "MTFA's Ihsan Kidney Care provides subsidised dialysis primarily for which group?", "options": ["A) All Singaporeans", "B) Low-income patients", "C) Only MTFA members"], "answer": "B) Low-income patients"},
-    {"question": "What percentage of donations (according to the website graphic) is channeled to 'childcare homes'?", "options": ["A) 25%", "B) 35%", "C) 5%"], "answer": "B) 35%"},
-    {"question": "Which MTFA entity handles funeral management courses?", "options": ["A) Darul Ihsan Orphanage", "B) Ihsan Kidney Care", "C) Ihsan Casket"], "answer": "C) Ihsan Casket"}
-]
-
 keywords = [kw for group in keyword_groups.values() for kw in group]
 
 # --- Functions ---
@@ -266,13 +258,6 @@ def send_email(matched_articles_data):
     mtfa_hits = len(mtfa_articles)
     sentiment_map = {"POSITIVE": {"bg": "#e8f5e9", "text": "#2e7d32"}, "NEGATIVE": {"bg": "#ffebee", "text": "#c62828"}, "NEUTRAL": {"bg": "#eef2f7", "text": "#455a64"}}
 
-    quiz_item = random.choice(mtfa_quiz_data)
-    quiz_html = f"""<div class="quiz-box" style="background-color: #eef2f7; border: 1px solid #d0d9e2; padding: 20px; margin: 20px 0; border-radius: 12px; text-align: center;">
-        <h3 style="color: {brand_green}; margin: 0 0 10px 0;">✨ MTFA Quick Quiz!</h3>
-        <p class="text-dark" style="font-size: 15px;">{quiz_item['question']}</p>
-        <p class="text-muted" style="font-size: 14px; color: #666;">{"<br>".join(quiz_item['options'])}</p>
-    </div>"""
-
     def build_article_list_html(articles, section_title):
         if not articles: return ""
         html = f"<h2 class='text-dark' style='color:{brand_green}; font-size:18px; margin-top:30px; margin-bottom:15px; border-bottom:2px solid {brand_green}; padding-bottom:5px;'>{section_title}</h2>"
@@ -323,7 +308,6 @@ def send_email(matched_articles_data):
                 .card {{ background-color: #242424 !important; border-color: #333 !important; }}
                 .text-dark {{ color: #e0e0e0 !important; }}
                 .text-muted {{ color: #a0a0a0 !important; }}
-                .quiz-box {{ background-color: #1e293b !important; border-color: #334155 !important; }}
                 .footer {{ background-color: #18181b !important; border-color: #333 !important; }}
             }}
         </style>
@@ -350,12 +334,10 @@ def send_email(matched_articles_data):
             </table>
 
             <div style="padding:30px;">
-                {quiz_html} 
                 {content_html if matched_articles_data else "<p class='text-muted' style='text-align:center; color:#999; padding-top:20px;'>No relevant news found for today.</p>"}
                 {feedback_html if matched_articles_data else ""}
             </div>
             <div class="footer" style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
-                <strong>Quiz Answer:</strong> {quiz_item['answer']}<br><br>
                 Designed by Ath Thaariq (MSE-OCE) | <a href="https://docs.google.com/spreadsheets/d/{SHEET_ID}" style="color:{brand_blue};">View Logs</a>
             </div>
         </div>
