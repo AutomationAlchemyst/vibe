@@ -257,7 +257,7 @@ def send_daily_brief(articles):
         <div style="max-width:600px; margin:0 auto; background:white; border-radius:15px; overflow:hidden; border-top:10px solid {brand_green}; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
             <div style="padding:20px; text-align:center; background:#fff;">
                 <img src="cid:logo" style="max-height:60px;">
-                <h1 style="margin:10px 0 0 0; font-size:22px; color:{brand_green};">MTFA News Brief</h1>
+                <h1 style="margin:10px 0 0 0; font-size:22px; color:{brand_green};">MTFA Media Intelligence</h1>
                 <p style="font-size:12px; color:#999;">{today} | Daily Briefing</p>
             </div>
             <div style="padding:20px;">
@@ -283,15 +283,34 @@ def send_daily_brief(articles):
         msg['Cc'] = ", ".join(cc)
     msg.attach(MIMEText(full_html, 'html'))
 
-    try:
-        # Use absolute path to ensure reliability across execution methods (cron, etc)
-        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webcrawl", "MTFA_logo.png")
-        with open(logo_path, "rb") as f:
-            img = MIMEImage(f.read())
-            img.add_header('Content-ID', '<logo>')
-            msg.attach(img)
-    except FileNotFoundError:
-        logging.warning("Logo file not found. Skipping image attachment.")
+    # --- Improved Logo Handling ---
+    logo_attached = False
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Check multiple possible locations for the logo to ensure it's found
+    possible_paths = [
+        os.path.join(base_dir, "webcrawl", "MTFA_logo.png"),
+        os.path.join(base_dir, "MTFA_logo.png"),
+        os.path.join(os.getcwd(), "webcrawl", "MTFA_logo.png"),
+        os.path.join(os.getcwd(), "MTFA_logo.png")
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    img = MIMEImage(f.read())
+                    img.add_header('Content-ID', '<logo>')
+                    img.add_header('Content-Disposition', 'inline') # Crucial for Outlook/Gmail
+                    msg.attach(img)
+                    logo_attached = True
+                    break # Stop looking once successfully attached
+            except Exception as e:
+                logging.warning(f"Found logo at {path} but failed to attach: {e}")
+    
+    if not logo_attached:
+        logging.warning("Logo file not found. Checked paths: " + ", ".join(possible_paths))
+        print("INFO: Email sent, but MTFA_logo.png was not found in the expected directories.")
 
     if sender and password:
         try:
