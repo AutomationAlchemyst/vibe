@@ -25,9 +25,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-# Gemini API Configuration (Mandatory: Use empty string for key in this environment)
-apiKey = "" 
-GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025"
+# Gemini API Configuration
+apiKey = os.getenv("GEMINI_API_KEY", "") 
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # Google Sheets Configuration
 SHEET_ID = os.getenv("SHEET_ID", "your_spreadsheet_id_here")
@@ -349,7 +349,7 @@ def send_email(matched_articles_data):
                 {feedback_html}
             </div>
             <div class="footer" style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
-                This is automated briefing was designed by Ath Thaariq Marthas (OCE-MSE).
+                This is an automated briefing.
             </div>
         </div>
     </body>
