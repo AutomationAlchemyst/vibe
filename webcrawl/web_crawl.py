@@ -349,7 +349,7 @@ def send_email(matched_articles_data):
                 {feedback_html}
             </div>
             <div class="footer" style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
-                This is an automated briefing.
+                This is automated briefing was designed by Ath Thaariq Marthas (OCE-MSE).
             </div>
         </div>
     </body>
