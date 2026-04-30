@@ -257,7 +257,7 @@ def send_daily_brief(articles):
         <div style="max-width:600px; margin:0 auto; background:white; border-radius:15px; overflow:hidden; border-top:10px solid {brand_green}; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
             <div style="padding:20px; text-align:center; background:#fff;">
                 <img src="cid:logo" style="max-height:60px;">
-                <h1 style="margin:10px 0 0 0; font-size:22px; color:{brand_green};">MTFA Media Intelligence</h1>
+                <h1 style="margin:10px 0 0 0; font-size:22px; color:{brand_green};">MTFA News Brief</h1>
                 <p style="font-size:12px; color:#999;">{today} | Daily Briefing</p>
             </div>
             <div style="padding:20px;">
