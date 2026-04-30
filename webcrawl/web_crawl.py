@@ -36,22 +36,45 @@ CREDENTIALS_FILE = "credentials2.json"
 # --- Keyword Definitions ---
 keyword_groups = {
     "MTFA_Main": ["MTFA", "Muslimin Trust Fund Association", "MTFA Singapore"],
-    "Darul_Ihsan": ["Darul Ihsan Orphanage", "MTFA Darul Ihsan", "Darul Ihsan Boys", "Darul Ihsan Girls"],
-    "Ihsan_Casket": ["Ihsan Casket", "MTFA Ihsan Casket", "Muslim funeral", "jenazah", "pengurusan jenazah"],
-    "Ihsan_Kidney_Care": ["Ihsan Kidney Care", "IKC", "MTFA Ihsan Kidney Care", "dialysis centre", "pusat dialisis"],
-    "MTFA_Financial_Aid": ["Ihsan Aid", "MTFA financial assistance", "MTFA welfare aid", "MTFA zakat"],
-    "Competitor_Kidney": ["NKF", "National Kidney Foundation", "KDF", "Kidney Dialysis Foundation"],
-    "Competitor_MuslimAid": ["RLAF", "Rahmatan Lil Alamin Foundation", "AMP Singapore", "Association of Muslim Professionals", "Mendaki", "Yayasan Mendaki"],
-    "General_Charity": ["NVPC", "NCSS", "ComChest", "Community Chest", "Temasek Trust", "Tote Board", "social impact", "SG Enable", "VWO", "charity"]
+    "Darul_Ihsan_Orphanage": ["Darul Ihsan Orphanage", "MTFA Darul Ihsan", "Darul Ihsan Boys", "Darul Ihsan Girls", "5 Mattar Road", "23 Wan Tho Ave"],
+    "Ihsan_Casket": ["Ihsan Casket", "MTFA Ihsan Casket", "burial service", "funeral service", "Muslim funeral", "Islamic funeral", "jenazah", "pengurusan jenazah", "placenta burial", "free burial", "unclaimed bodies", "ghusl", "funeral management course", "info@ihsancasket.com"],
+    "Ihsan_Kidney_Care": ["Ihsan Kidney Care", "IKC", "MTFA Ihsan Kidney Care", "MTFA dialysis", "dialysis centre", "pusat dialisis", "kidney treatment", "rawatan ginjal", "buah pinggang", "subsidised dialysis", "Norris Rd dialysis"],
+    "MTFA_Financial_Aid": ["Ihsan Aid", "MTFA financial assistance", "MTFA welfare aid", "MTFA needy families", "MTFA low-income support", "MTFA underprivileged support", "welfareaid@mtfa.org", "MTFA zakat", "MTFA fidyah"],
+    "MTFA_Education_Support": ["Ihsan Education Hub", "MTFA bursary", "MTFA scholarship", "MTFA education award", "MTFA student assistance", "MTFA free tuition"],
+    "MTFA_Childcare_Service": ["Ihsan Childcare", "MTFA childcare", "MTFA taska", "MTFA tadika", "MTFA nursery"],
+    "Competitor_Kidney_NKF": ["NKF", "National Kidney Foundation", "NKF Singapore"],
+    "Competitor_Kidney_KDF": ["KDF", "Kidney Dialysis Foundation"],
+    "Competitor_MuslimAid_RLAF": ["RLAF", "Rahmatan Lil Alamin Foundation"],
+    "Competitor_MuslimAid_AMP": ["AMP Singapore", "AMP financial assistance", "AMP SMEF", "Mendaki", "Yayasan Mendaki"],
+    "Competitor_ChildrenHome_CSLMCH": ["Chen Su Lan Methodist Children's Home", "CSLMCH"],
+    "Competitor_ChildrenHome_Melrose": ["Melrose Home", "Children's Aid Society"],
+    "Competitor_IslamicBurial": ["Singapore Muslim Casket", "Persatuan Khairat Kematian Singapura", "Takdir Pengurusan Jenazah", "Pengurusan Jenazah Sinaran Baharu"],
+    "Competitor_FreeTuition": ["Children's Wishing Well", "YYD Education Centre", "AMP tuition", "Tzu Chi Seeds of Hope"],
+    "Competitor_Childcare": ["MY World Preschool", "Metropolitan YMCA childcare", "Canossaville Children and Community Services"],
+    "Competitor_Other": ["Ramakrishna Mission", "Jamiyah", "Muhammadiyah", "Pergas"],
+    "SocialSector_Advocacy_Support": ["Humanitarian Organisation for Migration Economics", "H.O.M.E.", "TWC2", "Transient Workers Count Too", "migrant worker support", "foreign worker rights", "domestic worker aid", "migrant workers"],
+    "General_Beneficiaries": ["beneficiary", "penerima bantuan", "asnaf", "recipient", "low-income", "needy", "underprivileged", "vulnerable", "orphanage", "rumah anak yatim", "displaced children", "vulnerable youths"],
+    "General_Donations": ["donation", "derma", "sumbangan", "infaq", "wakaf", "infak", "fundraising", "pengumpulan dana", "donate", "menyumbang"],
+    "General_Zakat": ["zakat", "derma zakat", "bayar zakat"],
+    "General_CharitySector": ["charity", "charities", "non-profit", "non profit", "NPO", "philanthropy", "philanthropic", "social impact", "community initiative", "foundation grant", "NVPC", "NCSS", "ComChest", "Community Chest", "Temasek Trust", "Tote Board", "SG Enable", "VWO"],
 }
 
-EXCLUSION_KEYWORDS = ["coral", "marine life", "power plant", "PacificLight", "ge2025", "election"]
+EXCLUSION_KEYWORDS = [
+    "coral", "marine life", "power plant", "hydrogen-compatible", "natural gas", 
+    "discharge point", "underwater", "environmental study", "PacificLight", 
+    "bleaching", "political donation", "election", "candidate", "ge2025"
+]
+
+POLITICAL_EXCLUSION_KEYWORDS = ["political donation", "election", "candidate", "eld", "ge2025", "parliamentary seat", "general election", "nomination paper", "political party", "campaign fund", "election department", "minister", "ministers", "MP", "Member of Parliament", "MPs", "politician", "politicians", "government official", "government officials", "allegation", "allegations", "defamation", "libel", "lawsuit against politician"]
+
+CORE_RELEVANT_GROUPS = list(keyword_groups.keys())
+keywords = [kw for group in keyword_groups.values() for kw in group]
 
 # --- API Interaction ---
 
 def call_gemini_api(prompt):
     """
-    Calls Gemini API with mandatory exponential backoff and search grounding.
+    Calls Gemini API with exponential backoff, search grounding, and safety settings.
     """
     host = "generativelanguage.googleapis.com"
     url = f"/v1beta/models/{GEMINI_MODEL}:generateContent?key={apiKey}"
@@ -59,15 +82,18 @@ def call_gemini_api(prompt):
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}],
-        "systemInstruction": {
-            "parts": [{"text": "You are a media intelligence analyst. Summarize articles accurately and objectively."}]
-        }
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ]
     }
     
     retries = 0
     delays = [1, 2, 4, 8, 16]
     
-    while retries < 5:
+    while retries <= 5:
         try:
             conn = http.client.HTTPSConnection(host)
             headers = {"Content-Type": "application/json"}
@@ -78,216 +104,271 @@ def call_gemini_api(prompt):
             
             if response.status == 200:
                 result = json.loads(data)
-                text = result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', "")
-                return text
+                try:
+                    candidates = result.get('candidates', [])
+                    if candidates:
+                        candidate = candidates[0]
+                        if candidate.get('finishReason') == 'SAFETY':
+                            return "Summary blocked by Gemini safety filters."
+                        
+                        parts = candidate.get('content', {}).get('parts', [])
+                        if parts:
+                            return parts[0].get('text', "")
+                except Exception:
+                    return None
             
-            # Retry on rate limits or server errors
-            if response.status in [429, 500, 502, 503, 504]:
+            if response.status in [429, 500, 502, 503, 504] and retries < 5:
                 time.sleep(delays[retries])
                 retries += 1
             else:
                 break
         except Exception:
-            time.sleep(delays[retries])
-            retries += 1
-            
+            if retries < 5:
+                time.sleep(delays[retries])
+                retries += 1
+            else:
+                break
+                
     return None
 
 # --- Logic Functions ---
 
-def fetch_content(url):
-    """Downloads and parses full article text."""
+def fetch_full_article_content(article_url):
     try:
         config = Config()
-        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        config.request_timeout = 15
-        article = Article(url, config=config)
+        agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
+        ]
+        config.browser_user_agent = random.choice(agents)
+        config.request_timeout = 20
+        article = Article(article_url, config=config)
         article.download()
         article.parse()
         return article.text, article.top_image
-    except Exception as e:
-        logging.error(f"Error fetching content for {url}: {e}")
+    except Exception:
         return "", ""
 
-def get_sentiment_and_summary(headline, content):
-    """Uses Gemini to generate structured analysis."""
-    if not content or len(content) < 50:
-        return "Preview unavailable.", "NEUTRAL"
+def highlight_keywords(summary, keywords_to_highlight):
+    processed_summary = summary
+    for kw in sorted(keywords_to_highlight, key=len, reverse=True):
+        processed_summary = re.sub(rf"\b({re.escape(kw)})\b", r"<span style='color:#006a4e; background-color:#e8f5e9; font-weight:bold; padding:0 3px; border-radius:3px;'>\1</span>", processed_summary, flags=re.IGNORECASE)
+    return processed_summary
 
-    prompt = f"""
-    Analyze this article for a Singaporean non-profit (MTFA).
-    1. Summarize key points in under 80 words.
-    2. Determine sentiment: [POSITIVE], [NEUTRAL], or [NEGATIVE].
+def generate_summary(headline, article_content):
+    if not article_content or len(article_content.strip()) < 30:
+        return "<span style='color: #7f8c8d; font-style: italic;'>Preview unavailable (content highly restricted or blocked).</span>", "NEUTRAL"
+
+    prompt = f"""You are a media intelligence analyst for a non-profit organization.
+    Analyze the following article text (which may contain a short preview snippet). 
+    Summarize its key points in under 90 words. Focus on the specific details of any mentioned campaign, event, or initiative.
+    If the text is very short, just rewrite it clearly into a complete sentence. Ignore any lingering newsletter or subscription ads.
     
-    Headline: {headline}
-    Content: {content[:3000]}
+    Article Title: {headline}
+    Article Content: {article_content[:3500]}
     
-    Format:
-    Summary: [Text]
-    Sentiment: [TAG]
-    """
+    Provide your response in this format:
+    [Your summary here]
     
-    response = call_gemini_api(prompt)
-    if not response:
-        return "Summary failed.", "NEUTRAL"
+    TAG: [POSITIVE], [NEUTRAL], or [NEGATIVE]"""
+    
+    output = call_gemini_api(prompt)
+    
+    # Styled Fallback Mechanism
+    if not output or len(output.strip()) < 10:
+        safe_snippet = article_content[:200].replace('\n', ' ').strip()
+        if len(article_content) > 200: safe_snippet += "..."
+        return f"<span style='color: #7f8c8d; font-style: italic;'>Preview: {safe_snippet}</span>", "NEUTRAL"
         
     sentiment = "NEUTRAL"
-    if "[POSITIVE]" in response.upper(): sentiment = "POSITIVE"
-    elif "[NEGATIVE]" in response.upper(): sentiment = "NEGATIVE"
+    if "TAG: [POSITIVE]" in output.upper() or "[POSITIVE]" in output.upper(): sentiment = "POSITIVE"
+    elif "TAG: [NEGATIVE]" in output.upper() or "[NEGATIVE]" in output.upper(): sentiment = "NEGATIVE"
     
-    # Robust extraction using Regex to handle varying AI outputs
-    summary_match = re.search(r'Summary:\s*(.*?)(?:\n|$)', response, re.IGNORECASE)
-    if summary_match:
-        summary_part = summary_match.group(1).replace('*', '').strip()
-    else:
-        # Fallback if AI formatting fails completely
-        summary_part = response[:200].replace('*', '') + "..."
-        
-    return summary_part, sentiment
+    clean_summary = re.sub(r'TAG:\s*\[.*?\]', '', output, flags=re.IGNORECASE)
+    clean_summary = re.sub(r'\[.*?\]', '', clean_summary).strip()
+    
+    return clean_summary, sentiment
 
-def check_relevance(text, headline):
-    """Checks if article matches keywords and prioritizes MTFA groups."""
-    combined = f"{headline} {text}".lower()
-    
-    if any(ex in combined for ex in EXCLUSION_KEYWORDS):
+def contains_keywords(text, headline):
+    score, best_kw, best_group = 0, None, None
+    best_match_score = 0
+    h_lower, t_lower = headline.lower(), text.lower()
+    full_text_lower = f"{h_lower} {t_lower}"
+
+    if any(re.search(rf"\b{re.escape(ex)}\b", full_text_lower) for ex in EXCLUSION_KEYWORDS):
         return None, None
-        
-    matched_kw = None
-    matched_group = None
-        
-    for group, kws in keyword_groups.items():
-        for kw in kws:
-            if re.search(rf"\b{re.escape(kw.lower())}\b", combined):
-                # Prioritize MTFA over general/competitor hits
-                if any(x in group for x in ["MTFA", "Ihsan", "Darul"]):
-                    return kw, group
-                # Store competitor/general but keep looking for MTFA
-                if not matched_group:
-                    matched_kw = kw
-                    matched_group = group
+
+    for group, group_kws in keyword_groups.items():
+        for kw in group_kws:
+            kw_l = kw.lower()
+            h_count = len(re.findall(rf"\b{re.escape(kw_l)}\b", h_lower, re.IGNORECASE))
+            t_count = len(re.findall(rf"\b{re.escape(kw_l)}\b", t_lower, re.IGNORECASE))
+            current_score = (h_count * 2) + t_count
+            
+            if current_score > 0:
+                is_political = any(re.search(rf"\b{re.escape(pk.lower())}\b", full_text_lower, re.IGNORECASE) for pk in POLITICAL_EXCLUSION_KEYWORDS)
+                if not is_political:
+                    is_mtfa_group = "MTFA" in group or "Ihsan" in group or "Darul" in group
+                    score += (current_score * 3) if is_mtfa_group else current_score
                     
-    return matched_kw, matched_group
+                    if group in CORE_RELEVANT_GROUPS and current_score > best_match_score:
+                        best_match_score = current_score
+                        best_kw, best_group = kw, group
+
+    is_core_group = best_group and any(k in str(best_group) for k in ["MTFA", "Ihsan", "Darul", "Competitor"])
+    final_threshold = 3 if is_core_group else 5
+    
+    return (best_kw, best_group) if score >= final_threshold and best_kw else (None, None)
 
 # --- Communication ---
 
-def send_daily_brief(articles):
-    """
-    Sends a formatted HTML email. If zero hits, sends an audit email only to ath@mtfa.org.
-    """
-    # Enforce SG Timezone (UTC+8) for accurate date stamping in emails regardless of server location
+def send_email(matched_articles_data):
     sgt_tz = timezone(timedelta(hours=8))
-    today = datetime.now(sgt_tz).strftime('%d %b %Y')
+    today = datetime.now(sgt_tz).strftime('%A, %d %B %Y')
     brand_green = "#006a4e"
     brand_blue = "#0d47a1"
     
-    # Split articles for layout
-    mtfa_hits = [a for a in articles if any(x in a['group'] for x in ["MTFA", "Ihsan", "Darul"])]
-    others = [a for a in articles if a not in mtfa_hits]
+    total_count = len(matched_articles_data)
+    mtfa_articles = []
+    competitor_articles = []
+    general_articles = []
     
     html_content = ""
 
-    if not articles:
+    if not matched_articles_data:
         logging.info("No news hits found. Sending audit email to ath@mtfa.org.")
-        html_content = "<p style='text-align:center; color:#555; font-size:16px; padding:40px 20px;'>No relevant news mentions found across tracked feeds today.</p>"
-        recipients = ["ath@mtfa.org"]
-        cc = []
-        subject_suffix = " (No Hits - Audit)"
+        content_html = "<p style='text-align:center; color:#555; font-size:16px; padding:40px 20px;'>No relevant news mentions found across tracked feeds today.</p>"
+        feedback_html = ""
+        to_recipients = ["ath@mtfa.org"]
+        cc_recipients = []
+        subject_alert = " (No Hits - Audit)"
+        mtfa_hits = 0
     else:
-        recipients = [
-            "abdulqader@mtfa.org",
-            "abdulrahman@mtfa.org",
-            "jaafar@mtfa.org",
-            "faz@mtfa.org",
-            "hamzah@mtfa.org",
-            "wasim@mtfa.org",
-            "sameer@mtfa.org",
-            "shaffiqolia@mtfa.org",
-            "ferdaus@mtfa.org",
-            "adi@mtfa.org",
-            "syahiran@mtfa.org",
-            "mustaffa@mtfa.org",
-            "norhisham@mtfa.org",
-            "md.shamir@mtfa.org",
-            "madihid@mtfa.org",
-            "kamalkarim@mtfa.org",
-            "mustaffa@theblackhole.sg",
-            "officeofed@mtfa.org",
-            "msaifulmtfa@mtfa.org",
-            "mardhiyyah@mtfa.org",
-            "juliyah@mtfa.org",
-            "ath@mtfa.org",
-            "farhan.zohri@mtfa.org",
-            "akram.hanif@mtfa.org",
-            "ikram@mtfa.org",
-            "muzdalifah@mtfa.org",
-            "shafawati@mtfa.org"
-        ]
-        cc = []
-        subject_suffix = " (🚨 Mention Found)" if mtfa_hits else ""
-        
-        def format_card(art):
-            s_color = {"POSITIVE": "#2e7d32", "NEGATIVE": "#c62828", "NEUTRAL": "#455a64"}.get(art['sentiment'], "#455a64")
-            img_tag = f'<img src="{art["image"]}" style="width:100%; height:auto; border-radius:8px 8px 0 0;">' if art['image'] else ""
+        for art in matched_articles_data:
+            group = art.get('keyword_group', '')
+            if not group: group = ""
             
-            return f"""
-            <div style="background:white; border:1px solid #eee; border-radius:12px; margin-bottom:20px; box-shadow:0 2px 5px rgba(0,0,0,0.05); overflow:hidden;">
-                {img_tag}
-                <div style="padding:15px;">
-                    <span style="font-size:10px; font-weight:bold; color:{s_color}; background:#f0f0f0; padding:2px 8px; border-radius:10px;">{art['sentiment']}</span>
-                    <h3 style="margin:10px 0 5px 0; font-size:16px; color:#333;">{art['headline']}</h3>
-                    <p style="font-size:14px; color:#555; line-height:1.5;">{art['summary']}</p>
-                    <div style="margin-top:10px; font-size:11px; color:#888;">
-                        <a href="{art['link']}" style="color:{brand_blue}; text-decoration:none; font-weight:bold;">Read More →</a>
-                        <span style="float:right;">{art['group']}</span>
+            if any(x in group for x in ["MTFA", "Ihsan", "Darul"]):
+                mtfa_articles.append(art)
+            elif "Competitor" in group:
+                competitor_articles.append(art)
+            else:
+                general_articles.append(art)
+
+        mtfa_hits = len(mtfa_articles)
+        sentiment_map = {"POSITIVE": {"bg": "#e8f5e9", "text": "#2e7d32"}, "NEGATIVE": {"bg": "#ffebee", "text": "#c62828"}, "NEUTRAL": {"bg": "#eef2f7", "text": "#455a64"}}
+
+        def build_article_list_html(articles, section_title):
+            if not articles: return ""
+            html = f"<h2 class='text-dark' style='color:{brand_green}; font-size:18px; margin-top:30px; margin-bottom:15px; border-bottom:2px solid {brand_green}; padding-bottom:5px;'>{section_title}</h2>"
+            for art in articles:
+                s_style = sentiment_map.get(art['sentiment'], sentiment_map["NEUTRAL"])
+                highlighted = highlight_keywords(art['summary'], keywords)
+                safe_alt = art['headline'].replace('"', "'")
+                
+                img_html = f'<img src="{art["image"]}" alt="{safe_alt}" style="width:100%; height:auto; display:block; border-radius:8px 8px 0 0;">' if art["image"] else ""
+                
+                html += f"""
+                <div class="card" style="background:white; border:1px solid #ddd; border-radius:12px; margin-bottom:20px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    {img_html}
+                    <div style="padding:20px;">
+                        <span style="background:{s_style['bg']}; color:{s_style['text']}; padding:3px 10px; border-radius:15px; font-size:11px; font-weight:bold;">{art['sentiment']}</span>
+                        <h3 class="text-dark" style="margin:10px 0; color:#333; font-size:18px;">{art['headline']}</h3>
+                        <p class="text-dark" style="font-size:14px; line-height:1.6; color:#444;">{highlighted}</p>
+                        <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#888;">
+                            <a href="{art['link']}" style="color:{brand_blue}; font-weight:bold; text-decoration:none;">Read Full Article →</a>
+                            <span class="text-muted">{art['keyword_group']} | {art['date'].strftime('%d %b')}</span>
+                        </div>
                     </div>
-                </div>
-            </div>
-            """
+                </div>"""
+            return html
 
-        sections = [("🚨 MTFA & Subsidiaries Mentions", mtfa_hits), ("🌐 Industry & Peer News", others)]
-        for title, collection in sections:
-            if collection:
-                html_content += f"<h2 style='color:{brand_green}; border-bottom:2px solid {brand_green}; padding-bottom:5px; font-size:18px; margin-top:30px;'>{title}</h2>"
-                for art in collection:
-                    html_content += format_card(art)
+        content_html = ""
+        content_html += build_article_list_html(mtfa_articles, "🚨 MTFA & Subsidiaries")
+        content_html += build_article_list_html(competitor_articles, "📊 Peer & Competitor News")
+        content_html += build_article_list_html(general_articles, "🌐 General Social Sector")
 
-    full_html = f"""
+        feedback_html = """
+        <div style="text-align:center; margin-top:30px; padding-top:20px; border-top:1px solid #eee;">
+            <p class="text-muted" style="font-size:14px; color:#555; margin-bottom:10px;">Was this brief helpful?</p>
+            <a href="mailto:ath@mtfa.org?subject=Briefing%20Feedback:%20Yes&body=This%20brief%20was%20helpful!" style="display:inline-block; padding:8px 15px; margin:0 5px; background-color:#e8f5e9; color:#2e7d32; text-decoration:none; border-radius:20px; font-weight:bold; font-size:13px;">👍 Yes</a>
+            <a href="mailto:ath@mtfa.org?subject=Briefing%20Feedback:%20No&body=This%20brief%20could%20be%20improved%20by..." style="display:inline-block; padding:8px 15px; margin:0 5px; background-color:#ffebee; color:#c62828; text-decoration:none; border-radius:20px; font-weight:bold; font-size:13px;">👎 No</a>
+        </div>
+        """
+        
+        to_recipients = ["abdulqader@mtfa.org"]
+        cc_recipients = [
+            "abdulrahman@mtfa.org", "jaafar@mtfa.org", "faz@mtfa.org", "hamzah@mtfa.org", 
+            "wasim@mtfa.org", "sameer@mtfa.org", "shaffiqolia@mtfa.org", "ferdaus@mtfa.org", 
+            "adi@mtfa.org", "syahiran@mtfa.org", "mustaffa@mtfa.org", "norhisham@mtfa.org", 
+            "md.shamir@mtfa.org", "madihid@mtfa.org", "kamalkarim@mtfa.org", "mustaffa@theblackhole.sg",
+            "officeofed@mtfa.org", "msaifulmtfa@mtfa.org", "mardhiyyah@mtfa.org", "juliyah@mtfa.org", 
+            "ath@mtfa.org", "farhan.zohri@mtfa.org", "akram.hanif@mtfa.org", "ikram@mtfa.org", 
+            "muzdalifah@mtfa.org", "shafawati@mtfa.org"
+        ]
+        subject_alert = " (🚨 MTFA Mentioned)" if mtfa_hits > 0 else ""
+
+    email_body = f"""<!DOCTYPE html>
     <html>
-    <body style="font-family: sans-serif; background:#f4f7f6; padding:10px; margin:0;">
-        <div style="max-width:600px; margin:0 auto; background:white; border-radius:15px; overflow:hidden; border-top:10px solid {brand_green}; box-shadow:0 10px 30px rgba(0,0,0,0.1);">
-            <div style="padding:20px; text-align:center; background:#fff;">
-                <img src="cid:logo" style="max-height:60px;">
-                <h1 style="margin:10px 0 0 0; font-size:22px; color:{brand_green};">MTFA Media Intelligence</h1>
-                <p style="font-size:12px; color:#999;">{today} | Daily Briefing</p>
+    <head>
+        <style>
+            :root {{ color-scheme: light dark; supported-color-schemes: light dark; }}
+            @media (prefers-color-scheme: dark) {{
+                body, .email-bg {{ background-color: #121212 !important; }}
+                .main-container {{ background-color: #1e1e1e !important; box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important; }}
+                .card {{ background-color: #242424 !important; border-color: #333 !important; }}
+                .text-dark {{ color: #e0e0e0 !important; }}
+                .text-muted {{ color: #a0a0a0 !important; }}
+                .footer {{ background-color: #18181b !important; border-color: #333 !important; }}
+            }}
+        </style>
+    </head>
+    <body class="email-bg" style="background-color:#f4f7f6; padding:20px; font-family: 'Segoe UI', Arial, sans-serif; margin:0;">
+        <div class="main-container" style="max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; border-top:8px solid {brand_green}; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
+            <div style="padding:30px; text-align:center;">
+                <img src="cid:logo" alt="MTFA Logo" style="max-height:75px; margin-bottom:15px;">
+                <h1 style="color:{brand_green}; margin:0; font-size:24px;">Daily News Brief</h1>
+                <p class="text-muted" style="color:#888; font-size:14px;">{today} | Prepared by Office of the CEO</p>
             </div>
-            <div style="padding:20px;">
-                {html_content}
+            
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{brand_green}; color:white; text-align:center;">
+                <tr>
+                    <td width="50%" style="padding:15px 0; border-right:1px solid rgba(255,255,255,0.2);">
+                        <div style="font-size:24px; font-weight:bold;">{total_count}</div>
+                        <div style="font-size:11px; opacity:0.9; letter-spacing:1px;">NEWS HITS</div>
+                    </td>
+                    <td width="50%" style="padding:15px 0;">
+                        <div style="font-size:24px; font-weight:bold;">{mtfa_hits}</div>
+                        <div style="font-size:11px; opacity:0.9; letter-spacing:1px;">MTFA MENTIONS</div>
+                    </td>
+                </tr>
+            </table>
+
+            <div style="padding:30px;">
+                {content_html}
+                {feedback_html}
             </div>
-            <div style="background:#f9f9f9; padding:20px; text-align:center; font-size:11px; color:#aaa; border-top:1px solid #eee;">
+            <div class="footer" style="padding:25px; background:#f9f9f9; text-align:center; font-size:12px; border-top:1px solid #eee; color:#777;">
                 This is an automated briefing.
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
 
-    # Email Sending
-    sender = os.getenv("SENDER_EMAIL")
-    password = os.getenv("EMAIL_PASSWORD")
-
+    sender = os.getenv("SENDER_EMAIL", "ath@mtfa.org")
+    pw = os.getenv("EMAIL_PASSWORD")
+    
     msg = MIMEMultipart('related')
-    msg['Subject'] = f"MTFA News Brief: {today}{subject_suffix}"
+    msg['Subject'] = f"MTFA News Brief: {today}{subject_alert}"
     msg['From'] = f"MTFA Media Bot <{sender}>"
-    msg['To'] = ", ".join(recipients)
-    if cc:
-        msg['Cc'] = ", ".join(cc)
-    msg.attach(MIMEText(full_html, 'html'))
+    msg['To'] = ", ".join(to_recipients)
+    if cc_recipients:
+        msg['Cc'] = ", ".join(cc_recipients)
+    msg.attach(MIMEText(email_body, 'html'))
 
     # --- Improved Logo Handling ---
     logo_attached = False
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Check multiple possible locations for the logo to ensure it's found
     possible_paths = [
         os.path.join(base_dir, "webcrawl", "MTFA_logo.png"),
         os.path.join(base_dir, "MTFA_logo.png"),
@@ -301,102 +382,112 @@ def send_daily_brief(articles):
                 with open(path, "rb") as f:
                     img = MIMEImage(f.read())
                     img.add_header('Content-ID', '<logo>')
-                    img.add_header('Content-Disposition', 'inline') # Crucial for Outlook/Gmail
+                    img.add_header('Content-Disposition', 'inline')
                     msg.attach(img)
                     logo_attached = True
-                    break # Stop looking once successfully attached
+                    break
             except Exception as e:
                 logging.warning(f"Found logo at {path} but failed to attach: {e}")
     
     if not logo_attached:
         logging.warning("Logo file not found. Checked paths: " + ", ".join(possible_paths))
-        print("INFO: Email sent, but MTFA_logo.png was not found in the expected directories.")
 
-    if sender and password:
+    if pw:
         try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(sender, password)
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(sender, pw)
                 server.send_message(msg)
-                logging.info(f"Email sent successfully with {len(articles)} articles.")
+                logging.info(f"Email sent successfully with {total_count} articles.")
         except Exception as e:
             logging.error(f"Failed to send email: {e}")
 
 # --- Execution ---
-
 if __name__ == "__main__":
-    rss_urls = [
+    rss_feeds = [
         "https://www.straitstimes.com/news/singapore/rss.xml",
         "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=10416",
+        "https://www.todayonline.com/feed",
+        "https://www.asiaone.com/rss/latest.xml",
         "https://news.google.com/rss/search?q=site:beritaharian.sg",
-        "https://news.google.com/rss/search?q=%22Muslimin+Trust+Fund+Association%22",
+        "https://news.google.com/rss/search?q=site:businesstimes.com.sg+charity+OR+non-profit+OR+philanthropy",
+        "https://news.google.com/rss/search?q=site:muis.gov.sg",
+        "https://news.google.com/rss/search?q=site:msf.gov.sg+OR+%22Ministry+of+Social+and+Family+Development%22",
+        "https://news.google.com/rss?q=Muslimin+Trust+Fund+Association+Singapore",
+        "https://news.google.com/rss/search?q=%22National+Kidney+Foundation%22+NKF+Singapore",
+        "https://news.google.com/rss/search?q=%22Kidney+Dialysis+Foundation%22+KDF+Singapore",
+        "https://news.google.com/rss/search?q=%22Rahmatan+Lil+Alamin+Foundation%22+RLAF",
+        "https://news.google.com/rss/search?q=%22Association+of+Muslim+Professionals%22+AMP+Singapore",
         "https://news.google.com/rss/search?q=%22Mendaki%22+Singapore",
         "https://news.google.com/rss/search?q=%22Yayasan%22+Singapore+charity",
         "https://news.google.com/rss/search?q=%22Community+Chest%22+Singapore+charity",
         "https://news.google.com/rss/search?q=%22SG+Enable%22+Singapore+disability",
         "https://news.google.com/rss/search?q=%22VWO%22+Singapore+charity+non-profit"
     ]
-    
-    processed_articles = []
-    seen_links = set()
-    
-    # Use timezone-aware limit (UTC) to safely compare with feedparser output
+    all_data = []
+    seen = set()
     limit = datetime.now(timezone.utc) - timedelta(hours=24)
     
-    # Initialize Sheets and Load History for Deduplication
     try:
         creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets"])
         gs = gspread.authorize(creds)
         sheet = gs.open_by_key(SHEET_ID).sheet1
-        
-        # Load the last 200 URLs processed to prevent re-emailing the same links
         try:
             recent_links = sheet.col_values(6)[-200:]
-            seen_links.update(recent_links)
+            seen.update(recent_links)
         except Exception as e:
             logging.warning(f"Could not load previous links for deduplication: {e}")
     except Exception as e:
         logging.error(f"Sheet init failed: {e}")
         sheet = None
-
-    for feed_url in rss_urls:
-        feed = feedparser.parse(feed_url)
-        for entry in feed.entries[:10]: # Check top 10 per feed
-            if entry.link in seen_links: continue
+    
+    for url in rss_feeds:
+        feed = feedparser.parse(url)
+        for entry in feed.entries[:10]:
+            if entry.link in seen: continue
             
             try:
-                # Fallback to updated_parsed if published_parsed is missing
                 time_tuple = getattr(entry, 'published_parsed', getattr(entry, 'updated_parsed', None))
                 if time_tuple:
-                    # Convert parsed time to timezone-aware UTC datetime
                     pub_date = datetime(*time_tuple[:6]).replace(tzinfo=timezone.utc)
                     if pub_date < limit: continue
                 else:
-                    # Skip articles without dates entirely
                     continue
             except: continue
             
-            content, top_image = fetch_content(entry.link)
-            keyword, group = check_relevance(content, entry.title)
+            fetched_content, image = fetch_full_article_content(entry.link)
             
-            if keyword:
-                summary, sentiment = get_sentiment_and_summary(entry.title, content)
-                article_data = {
-                    "headline": entry.title,
-                    "summary": summary,
-                    "link": entry.link,
-                    "sentiment": sentiment,
-                    "image": top_image,
-                    "group": group,
+            junk_phrase = "Sign up now: Get ST's newsletters delivered to your inbox"
+            fetched_content = re.compile(re.escape(junk_phrase), re.IGNORECASE).sub("", fetched_content).strip()
+            
+            rss_summary_raw = getattr(entry, 'summary', '')
+            clean_rss_summary = re.sub(r'<[^>]+>', '', rss_summary_raw).strip()
+            
+            if len(fetched_content) > 100:
+                final_content = f"RSS Snippet: {clean_rss_summary}\n\nFull Text: {fetched_content}"
+            else:
+                final_content = clean_rss_summary if len(clean_rss_summary) > len(fetched_content) else fetched_content
+            
+            kw, group = contains_keywords(final_content, entry.title)
+            
+            if kw:
+                summary, sentiment = generate_summary(entry.title, final_content)
+                all_data.append({
+                    "headline": entry.title, 
+                    "summary": summary, 
+                    "link": entry.link, 
+                    "sentiment": sentiment, 
+                    "image": image, 
+                    "keyword_group": group, 
                     "date": pub_date
-                }
-                processed_articles.append(article_data)
-                seen_links.add(entry.link)
+                })
+                seen.add(entry.link)
                 
                 if sheet:
-                    try:
-                        sheet.append_row([pub_date.strftime('%Y-%m-%d'), entry.title, sentiment, keyword, group, entry.link])
+                    try: 
+                        # Reverted to original column order
+                        sheet.append_row([pub_date.strftime('%Y-%m-%d'), entry.title, summary, kw, group, entry.link])
                     except: pass
         
-        time.sleep(2) # Politeness delay
+        time.sleep(random.uniform(2, 5))
 
-    send_daily_brief(processed_articles)
+    send_email(all_data)
