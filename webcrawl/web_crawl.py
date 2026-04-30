@@ -194,7 +194,33 @@ def send_daily_brief(articles):
         subject_suffix = " (No Hits - Audit)"
     else:
         recipients = [
-            "ath@mtfa.org"
+            "abdulqader@mtfa.org",
+            "abdulrahman@mtfa.org",
+            "jaafar@mtfa.org",
+            "faz@mtfa.org",
+            "hamzah@mtfa.org",
+            "wasim@mtfa.org",
+            "sameer@mtfa.org",
+            "shaffiqolia@mtfa.org",
+            "ferdaus@mtfa.org",
+            "adi@mtfa.org",
+            "syahiran@mtfa.org",
+            "mustaffa@mtfa.org",
+            "norhisham@mtfa.org",
+            "md.shamir@mtfa.org",
+            "madihid@mtfa.org",
+            "kamalkarim@mtfa.org",
+            "mustaffa@theblackhole.sg",
+            "officeofed@mtfa.org",
+            "msaifulmtfa@mtfa.org",
+            "mardhiyyah@mtfa.org",
+            "juliyah@mtfa.org",
+            "ath@mtfa.org",
+            "farhan.zohri@mtfa.org",
+            "akram.hanif@mtfa.org",
+            "ikram@mtfa.org",
+            "muzdalifah@mtfa.org",
+            "shafawati@mtfa.org"
         ]
         cc = []
         subject_suffix = " (🚨 Mention Found)" if mtfa_hits else ""
