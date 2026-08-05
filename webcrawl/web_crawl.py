@@ -442,7 +442,7 @@ if __name__ == "__main__":
     
     for url in rss_feeds:
         feed = feedparser.parse(url)
-        for entry in feed.entries[:10]:
+        for entry in feed.entries[:25]:
             if entry.link in seen: continue
             
             try:
